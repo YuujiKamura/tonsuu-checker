@@ -41,8 +41,8 @@ pub struct Cli {
     pub model: Option<String>,
 
     /// Output format (json, table). Uses config value if not specified.
-    #[arg(long, short = 'o', global = true)]
-    pub output: Option<OutputFormat>,
+    #[arg(long, short = 'f', global = true)]
+    pub format: Option<OutputFormat>,
 
     /// Verbose output
     #[arg(long, short = 'v', global = true)]

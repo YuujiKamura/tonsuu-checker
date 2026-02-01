@@ -40,7 +40,7 @@ pub fn execute(cli: Cli) -> Result<()> {
             let ensemble_count = ensemble.unwrap_or(config.ensemble_count);
             // Cache disabled if: --no-cache OR config.cache_enabled=false
             let use_cache = !no_cache && config.cache_enabled;
-            let output_format = cli.output.unwrap_or(config.output_format);
+            let output_format = cli.format.unwrap_or(config.output_format);
             cmd_analyze(&cli, &config, image.clone(), use_cache, ensemble_count, output_format)
         }
 
@@ -58,7 +58,7 @@ pub fn execute(cli: Cli) -> Result<()> {
             };
             // Cache disabled if: --no-cache OR config.cache_enabled=false
             let use_cache = !no_cache && config.cache_enabled;
-            let output_format = cli.output.unwrap_or(config.output_format);
+            let output_format = cli.format.unwrap_or(config.output_format);
             cmd_batch(&cli, &config, folder.clone(), output.clone(), use_cache, job_count, output_format)
         }
 
@@ -448,6 +448,12 @@ fn cmd_config(
 }
 
 fn cmd_cache(config: &Config, clear: bool, stats: bool) -> Result<()> {
+    if !config.cache_enabled {
+        return Err(Error::Cache(crate::error::CacheError::IoError(
+            "Cache is disabled. Enable with: tonsuu-checker config --set-cache true".to_string(),
+        )));
+    }
+
     let cache = Cache::new(config.cache_dir()?)?;
 
     if clear {
