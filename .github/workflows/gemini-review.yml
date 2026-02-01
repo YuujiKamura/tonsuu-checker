@@ -1,0 +1,65 @@
+name: Gemini Code Review
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect Rust source files
+        run: |
+          echo "# Rust Source Files for Review" > /tmp/sources.txt
+          echo "" >> /tmp/sources.txt
+          for f in $(find src -name "*.rs" | sort); do
+            echo "## $f" >> /tmp/sources.txt
+            echo '```rust' >> /tmp/sources.txt
+            cat "$f" >> /tmp/sources.txt
+            echo '```' >> /tmp/sources.txt
+            echo "" >> /tmp/sources.txt
+          done
+
+      - name: Run Gemini Review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          SOURCES=$(cat /tmp/sources.txt)
+          PROMPT="以下のRustコードをレビューしてください。問題点、改善点を簡潔に日本語で指摘してください。重要度順に並べてください。
+
+          ${SOURCES}"
+
+          # Call Gemini API
+          curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg prompt "$PROMPT" '{contents:[{parts:[{text:$prompt}]}]}')" \
+            | jq -r '.candidates[0].content.parts[0].text // "Review failed"' > review_result.txt
+
+          echo "## Review Result"
+          cat review_result.txt
+
+      - name: Upload Review Result
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini-review
+          path: review_result.txt
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('review_result.txt', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '## Gemini Code Review\n\n' + review
+            });
