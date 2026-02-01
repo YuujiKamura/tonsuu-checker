@@ -7,6 +7,7 @@ use crate::config::Config;
 use crate::constants::get_truck_spec;
 use crate::error::{Error, Result};
 use crate::export::export_to_excel;
+use crate::output::output_result;
 use crate::scanner::{scan_directory, validate_image};
 use crate::types::{AnalysisEntry, BatchResults, EstimationResult, LoadGrade};
 use chrono::Utc;
@@ -101,9 +102,15 @@ fn cmd_analyze(
         .with_backend(&config.backend)
         .with_model(config.model.clone());
 
+    // Initialize cache once if enabled
+    let cache = if use_cache {
+        Some(Cache::new(config.cache_dir()?)?)
+    } else {
+        None
+    };
+
     // Check cache first
-    if use_cache {
-        let cache = Cache::new(config.cache_dir()?)?;
+    if let Some(ref cache) = cache {
         if let Ok(Some(cached)) = cache.get(&image) {
             if cli.verbose {
                 eprintln!("Using cached result");
@@ -125,8 +132,7 @@ fn cmd_analyze(
     };
 
     // Cache result
-    if use_cache {
-        let cache = Cache::new(config.cache_dir()?)?;
+    if let Some(ref cache) = cache {
         let _ = cache.set(&image, &result);
     }
 
@@ -397,7 +403,7 @@ fn cmd_config(
         let config = Config::default();
         config.save()?;
         println!("Configuration reset to defaults");
-        println!("\n{}", config.display());
+        println!("\n{}", config);
         return Ok(());
     }
 
@@ -435,7 +441,7 @@ fn cmd_config(
     }
 
     if show || !modified {
-        println!("{}", config.display());
+        println!("{}", config);
     }
 
     Ok(())
@@ -457,51 +463,3 @@ fn cmd_cache(config: &Config, clear: bool, stats: bool) -> Result<()> {
     Ok(())
 }
 
-fn output_result(output_format: OutputFormat, result: &crate::types::EstimationResult) -> Result<()> {
-    if output_format == OutputFormat::Json {
-        let content = serde_json::to_string_pretty(result)?;
-        println!("{}", content);
-    } else {
-        // Table format
-        println!("\nAnalysis Result");
-        println!("===============");
-        println!(
-            "Target detected: {}",
-            if result.is_target_detected {
-                "Yes"
-            } else {
-                "No"
-            }
-        );
-
-        if result.is_target_detected {
-            println!("Truck type:      {}", result.truck_type);
-            println!("Material:        {}", result.material_type);
-            println!("Volume:          {:.2} m³", result.estimated_volume_m3);
-            println!("Tonnage:         {:.2} t", result.estimated_tonnage);
-
-            if let Some(max_cap) = result.estimated_max_capacity {
-                let load_pct = (result.estimated_tonnage / max_cap) * 100.0;
-                let grade = LoadGrade::from_ratio(result.estimated_tonnage / max_cap);
-                println!("Max capacity:    {:.1} t", max_cap);
-                println!("Load:            {:.1}% ({})", load_pct, grade.label());
-            } else if let Some(spec) = get_truck_spec(&result.truck_type) {
-                let load_pct = (result.estimated_tonnage / spec.max_capacity) * 100.0;
-                let grade = LoadGrade::from_ratio(result.estimated_tonnage / spec.max_capacity);
-                println!("Max capacity:    {:.1} t (standard)", spec.max_capacity);
-                println!("Load:            {:.1}% ({})", load_pct, grade.label());
-            }
-
-            println!("Confidence:      {:.0}%", result.confidence_score * 100.0);
-
-            if let Some(ref plate) = result.license_plate {
-                println!("License plate:   {}", plate);
-            }
-
-            println!("\nReasoning:");
-            println!("{}", result.reasoning);
-        }
-    }
-
-    Ok(())
-}

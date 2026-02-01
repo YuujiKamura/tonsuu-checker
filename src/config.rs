@@ -3,7 +3,7 @@
 //! Config stored at: ~/.config/tonsuu-checker/config.json
 
 use crate::cli::OutputFormat;
-use crate::error::{Error, Result};
+use crate::error::{ConfigError, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -68,7 +68,7 @@ impl Config {
     /// Get the config directory path
     pub fn config_dir() -> Result<PathBuf> {
         let config_dir = dirs::config_dir()
-            .ok_or_else(|| Error::Config("Could not determine config directory".to_string()))?
+            .ok_or_else(|| ConfigError::NotFound)?
             .join("tonsuu-checker");
         Ok(config_dir)
     }
@@ -85,7 +85,7 @@ impl Config {
         }
 
         let cache_dir = dirs::cache_dir()
-            .ok_or_else(|| Error::Config("Could not determine cache directory".to_string()))?
+            .ok_or_else(|| ConfigError::NotFound)?
             .join("tonsuu-checker");
         Ok(cache_dir)
     }
@@ -116,31 +116,35 @@ impl Config {
         std::fs::write(&path, content)?;
         Ok(())
     }
+}
 
-    /// Display config as formatted string
-    pub fn display(&self) -> String {
-        let mut output = String::new();
-        output.push_str("Tonsuu Checker Configuration\n");
-        output.push_str("============================\n\n");
-        output.push_str(&format!("Backend:        {}\n", self.backend));
-        output.push_str(&format!(
-            "Model:          {}\n",
+impl std::fmt::Display for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Tonsuu Checker Configuration")?;
+        writeln!(f, "=============================")?;
+        writeln!(f)?;
+        writeln!(f, "Backend:        {}", self.backend)?;
+        writeln!(
+            f,
+            "Model:          {}",
             self.model.as_deref().unwrap_or("(default)")
-        ));
-        output.push_str(&format!("Cache enabled:  {}\n", self.cache_enabled));
-        output.push_str(&format!(
-            "Cache dir:      {}\n",
+        )?;
+        writeln!(f, "Cache enabled:  {}", self.cache_enabled)?;
+        writeln!(
+            f,
+            "Cache dir:      {}",
             self.cache_dir()
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|_| "(error)".to_string())
-        ));
-        output.push_str(&format!("Output format:  {}\n", self.output_format));
-        output.push_str(&format!("Ensemble count: {}\n", self.ensemble_count));
+        )?;
+        writeln!(f, "Output format:  {}", self.output_format)?;
+        writeln!(f, "Ensemble count: {}", self.ensemble_count)?;
 
         if let Ok(path) = Self::config_path() {
-            output.push_str(&format!("\nConfig file:    {}\n", path.display()));
+            writeln!(f)?;
+            writeln!(f, "Config file:    {}", path.display())?;
         }
 
-        output
+        Ok(())
     }
 }

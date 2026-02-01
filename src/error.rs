@@ -4,6 +4,32 @@
 
 use thiserror::Error;
 
+/// Configuration-related errors
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    #[error("Configuration not found")]
+    NotFound,
+
+    #[error("Failed to parse configuration: {0}")]
+    ParseError(String),
+
+    #[error("Failed to save configuration: {0}")]
+    SaveError(String),
+}
+
+/// Cache-related errors
+#[derive(Debug, Error)]
+pub enum CacheError {
+    #[error("Cache entry not found")]
+    NotFound,
+
+    #[error("Cache data corrupted: {0}")]
+    Corrupted(String),
+
+    #[error("Cache IO error: {0}")]
+    IoError(String),
+}
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("IO error: {0}")]
@@ -18,8 +44,11 @@ pub enum Error {
     #[error("AI analyzer error: {0}")]
     Analyzer(#[from] cli_ai_analyzer::Error),
 
-    #[error("Config error: {0}")]
-    Config(String),
+    #[error("Configuration error: {0}")]
+    Config(#[from] ConfigError),
+
+    #[error("Cache error: {0}")]
+    Cache(#[from] CacheError),
 
     #[error("File not found: {0}")]
     FileNotFound(String),
@@ -29,9 +58,6 @@ pub enum Error {
 
     #[error("Analysis failed: {0}")]
     AnalysisFailed(String),
-
-    #[error("Cache error: {0}")]
-    Cache(String),
 
     #[error("Excel export error: {0}")]
     Excel(String),

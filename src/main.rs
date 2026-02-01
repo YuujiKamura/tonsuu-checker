@@ -9,6 +9,7 @@ mod config;
 mod constants;
 mod error;
 mod export;
+mod output;
 mod scanner;
 mod types;
 
