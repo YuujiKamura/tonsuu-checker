@@ -17,11 +17,12 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Clone ai-code-review
+      - name: Clone dependencies
         run: |
           git clone https://github.com/YuujiKamura/ai-code-review.git ../ai-code-review
           git clone https://github.com/YuujiKamura/cli-ai-analyzer.git ../cli-ai-analyzer
           git clone https://github.com/YuujiKamura/folder-watcher.git ../folder-watcher
+          git clone https://github.com/YuujiKamura/tauri-gui-shell.git ../tauri-gui-shell
 
       - name: Build review tool
         run: |
