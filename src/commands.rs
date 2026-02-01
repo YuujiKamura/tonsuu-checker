@@ -171,7 +171,11 @@ fn cmd_batch(
     }
 
     // Setup shared state
-    let cache_dir = config.cache_dir()?;
+    let cache_dir = if use_cache {
+        Some(config.cache_dir()?)
+    } else {
+        None
+    };
     let backend = config.backend.clone();
     let model = config.model.clone();
 
@@ -212,12 +216,8 @@ fn cmd_batch(
                 .with_backend(&backend)
                 .with_model(model);
 
-            // Setup cache for this worker (only if caching enabled)
-            let cache = if use_cache {
-                Cache::new(cache_dir).ok()
-            } else {
-                None
-            };
+            // Setup cache for this worker (only if caching enabled and dir available)
+            let cache = cache_dir.and_then(|dir| Cache::new(dir).ok());
 
             loop {
                 // Get next image to process (lock-free)
