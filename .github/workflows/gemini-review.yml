@@ -17,8 +17,13 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Gemini CLI
+        run: npm install -g @google/gemini-cli
 
       - name: Clone dependencies
         run: |
@@ -34,9 +39,9 @@ jobs:
 
       - name: Run AI Review
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          ../ai-code-review/target/release/review --dir src --prompt quick --backend claude > review_result.txt 2>&1 || true
+          ../ai-code-review/target/release/review --dir src --prompt quick > review_result.txt 2>&1 || true
           echo "## Review Result"
           cat review_result.txt
 
