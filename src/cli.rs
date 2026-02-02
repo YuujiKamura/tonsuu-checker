@@ -234,4 +234,7 @@ pub enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+
+    /// Check AI backend status and rate limits
+    Stats,
 }

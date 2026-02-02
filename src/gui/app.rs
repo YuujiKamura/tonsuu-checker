@@ -86,6 +86,12 @@ impl TonsuuApp {
 
         cc.egui_ctx.set_fonts(fonts);
 
+        // Configure style for better touch/remote responsiveness
+        let mut style = (*cc.egui_ctx.style()).clone();
+        style.interaction.tooltip_delay = 0.5; // Faster tooltips
+        style.animation_time = 0.1; // Faster animations
+        cc.egui_ctx.set_style(style);
+
         // Load configuration
         let config = Config::load().unwrap_or_default();
 
@@ -173,7 +179,17 @@ impl eframe::App for TonsuuApp {
                     self.vehicle_panel.ui(ui, &mut self.vehicle_store, &self.config);
                 }
                 Tab::History => {
-                    self.history_panel.ui(ui, &mut self.store);
+                    self.history_panel.ui(ui, &mut self.store, &self.vehicle_store);
+                    // Handle pending actions from context menu
+                    if let Some(action) = self.history_panel.take_pending_action() {
+                        match action {
+                            crate::history_panel::ContextAction::ReAnalyze { hash: _, image_path } => {
+                                // TODO: Trigger re-analysis via analyze_panel
+                                eprintln!("Re-analyze requested for: {}", image_path);
+                            }
+                            _ => {}
+                        }
+                    }
                 }
                 Tab::Accuracy => {
                     self.accuracy_panel.ui(ui, &self.store);

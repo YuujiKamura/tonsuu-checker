@@ -2,6 +2,7 @@
 
 use crate::analyzer::cache::Cache;
 use crate::analyzer::{analyze_image, analyze_image_ensemble, AnalyzerConfig};
+use cli_ai_analyzer::{check_gemini_status, Backend};
 use crate::cli::{Cli, Commands, OutputFormat};
 use crate::config::Config;
 use crate::constants::get_truck_spec;
@@ -227,6 +228,8 @@ pub fn execute(cli: Cli) -> Result<()> {
         } => cmd_auto_collect(&cli, &config, folder.clone(), *yes, *jobs, *dry_run, company.clone()),
 
         Commands::Import { file, dry_run } => cmd_import(&config, file.clone(), *dry_run),
+
+        Commands::Stats => cmd_stats(&cli),
     }
 }
 
@@ -1833,6 +1836,48 @@ fn cmd_import(config: &Config, file: PathBuf, dry_run: bool) -> Result<()> {
         println!("  Skipped (duplicates): {}", skipped);
         println!("  Errors: {}", errors);
         println!("  Total entries in store: {}", store.count());
+    }
+
+    Ok(())
+}
+
+/// Check AI backend status and rate limits
+fn cmd_stats(cli: &Cli) -> Result<()> {
+    let backend = cli.backend.as_deref().unwrap_or("gemini");
+
+    println!("Checking {} status...", backend);
+
+    match backend.to_lowercase().as_str() {
+        "gemini" => {
+            match check_gemini_status(None) {
+                Ok(stats) => {
+                    if stats.is_available {
+                        println!("✓ Gemini API is available");
+                    } else {
+                        println!("✗ Gemini API is not available");
+                        if let Some(msg) = &stats.rate_limit_message {
+                            println!("  Rate limit: {}", msg);
+                        }
+                        if let Some(retry) = stats.retry_after_seconds {
+                            println!("  Retry after: {} seconds", retry);
+                        }
+                    }
+                    if cli.verbose {
+                        println!("\nRaw response:\n{}", stats.raw_response);
+                    }
+                }
+                Err(e) => {
+                    println!("✗ Error checking Gemini status: {}", e);
+                }
+            }
+        }
+        "claude" => {
+            println!("Claude status check not yet implemented");
+            println!("Hint: Use 'claude doctor' to check Claude CLI status");
+        }
+        _ => {
+            println!("Unknown backend: {}", backend);
+        }
     }
 
     Ok(())
