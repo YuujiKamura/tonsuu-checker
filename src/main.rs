@@ -10,7 +10,9 @@ mod constants;
 mod error;
 mod export;
 mod output;
+mod plate_local;
 mod scanner;
+mod store;
 mod types;
 
 use clap::Parser;

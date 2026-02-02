@@ -1,10 +1,12 @@
 //! AI-powered image analysis using cli-ai-analyzer
 
 pub mod cache;
+pub mod shaken;
 
-use crate::constants::prompts::build_analysis_prompt;
+use crate::constants::prompts::{build_analysis_prompt, build_staged_analysis_prompt, GradedReferenceItem};
 use crate::error::{Error, Result};
-use crate::types::EstimationResult;
+use crate::store::{GradedHistoryEntry, Store};
+use crate::types::{EstimationResult, TruckClass};
 use cli_ai_analyzer::{analyze, AnalyzeOptions, Backend};
 use std::path::Path;
 
@@ -61,17 +63,144 @@ pub fn analyze_image(image_path: &Path, config: &AnalyzerConfig) -> Result<Estim
     parse_response(&response)
 }
 
+/// Options for staged analysis
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct StagedAnalysisOptions {
+    /// Truck class for graded reference lookup (skip YOLO mode)
+    pub truck_class: Option<TruckClass>,
+    /// Ensemble count (number of inference iterations)
+    pub ensemble_count: u32,
+}
+
+impl Default for StagedAnalysisOptions {
+    fn default() -> Self {
+        Self {
+            truck_class: None,
+            ensemble_count: 1,
+        }
+    }
+}
+
+impl StagedAnalysisOptions {
+    pub fn with_truck_class(mut self, truck_class: TruckClass) -> Self {
+        self.truck_class = Some(truck_class);
+        self
+    }
+
+    pub fn with_ensemble_count(mut self, count: u32) -> Self {
+        self.ensemble_count = count.max(1);
+        self
+    }
+}
+
+/// Staged analysis progress callback
+pub type ProgressCallback = Box<dyn Fn(&str) + Send>;
+
+/// Analyze image using staged approach with graded reference data
+///
+/// Stage 1: Initial inference to detect truck class (if truck_class not provided)
+/// Stage 2+: Refined inference with graded historical data
+pub fn analyze_image_staged(
+    image_path: &Path,
+    config: &AnalyzerConfig,
+    options: &StagedAnalysisOptions,
+    store: &Store,
+    progress: Option<ProgressCallback>,
+) -> Result<EstimationResult> {
+    let notify = |msg: &str| {
+        if let Some(ref cb) = progress {
+            cb(msg);
+        }
+    };
+
+    let mut graded_stock: Vec<GradedHistoryEntry> = Vec::new();
+    let mut detected_class = TruckClass::Unknown;
+    let mut results: Vec<EstimationResult> = Vec::new();
+    let target_count = options.ensemble_count.max(1) as usize;
+
+    // If truck class is provided upfront, load graded data immediately
+    if let Some(truck_class) = options.truck_class {
+        detected_class = truck_class;
+        if detected_class != TruckClass::Unknown {
+            notify(&format!("{}クラスの実測データを取得中...", detected_class.label()));
+            graded_stock = store.select_stock_by_grade(detected_class);
+            if !graded_stock.is_empty() {
+                notify(&format!("実測データ {}件を参照", graded_stock.len()));
+            }
+        }
+    }
+
+    for iteration in 0..target_count {
+        notify(&format!("推論 {}/{} 実行中...", iteration + 1, target_count));
+
+        // Build prompt based on available data
+        let prompt = if !graded_stock.is_empty() {
+            // Stage 2+: Use graded reference data
+            let references: Vec<GradedReferenceItem> = graded_stock
+                .iter()
+                .map(|g| GradedReferenceItem {
+                    grade_name: g.grade.label().to_string(),
+                    actual_tonnage: g.entry.actual_tonnage.unwrap_or(0.0),
+                    max_capacity: g.entry.max_capacity.unwrap_or(0.0),
+                    load_ratio: g.load_ratio,
+                    memo: g.entry.notes.clone(),
+                })
+                .collect();
+            build_staged_analysis_prompt(None, &references)
+        } else {
+            // Stage 1: No reference data
+            build_staged_analysis_prompt(None, &[])
+        };
+
+        // Configure AI options
+        let mut ai_options = if let Some(ref model) = config.model {
+            AnalyzeOptions::with_model(model)
+        } else {
+            AnalyzeOptions::default()
+        };
+        ai_options = ai_options.with_backend(config.backend).json();
+
+        // Call AI
+        let response = analyze(&prompt, &[image_path.to_path_buf()], ai_options)?;
+        let result = parse_response(&response)?;
+
+        // max_capacityが指定されていない場合は、graded_stockを取得せずにそのまま推論を続ける
+
+        results.push(result);
+    }
+
+    if results.is_empty() {
+        return Err(Error::AnalysisFailed("All inference attempts failed".to_string()));
+    }
+
+    // Merge results
+    notify("結果を統合中...");
+    Ok(merge_results(&results))
+}
+
+/// Analyze with staged approach (ensemble version)
+pub fn analyze_image_staged_ensemble(
+    image_path: &Path,
+    config: &AnalyzerConfig,
+    options: &StagedAnalysisOptions,
+    store: &Store,
+) -> Result<EstimationResult> {
+    analyze_image_staged(image_path, config, options, store, None)
+}
+
 /// Parse AI response into EstimationResult
 fn parse_response(response: &str) -> Result<EstimationResult> {
     // Try to extract JSON from response (may have markdown code blocks)
-    let json_str = extract_json(response);
+    let json_str = extract_json_from_response(response);
 
     // Parse JSON
     let result: EstimationResult = serde_json::from_str(&json_str).map_err(|e| {
+        // Truncate response safely at char boundary
+        let truncated: String = response.chars().take(500).collect();
         Error::AnalysisFailed(format!(
             "Failed to parse AI response: {}. Response: {}",
-            e,
-            &response[..response.len().min(500)]
+            e, truncated
         ))
     })?;
 
@@ -79,7 +208,7 @@ fn parse_response(response: &str) -> Result<EstimationResult> {
 }
 
 /// Extract JSON from response (handles markdown code blocks)
-fn extract_json(response: &str) -> String {
+pub fn extract_json_from_response(response: &str) -> String {
     let response = response.trim();
 
     // Check for markdown code block
@@ -205,18 +334,18 @@ mod tests {
     #[test]
     fn test_extract_json_markdown() {
         let response = "```json\n{\"test\": 123}\n```";
-        assert_eq!(extract_json(response), "{\"test\": 123}");
+        assert_eq!(extract_json_from_response(response), "{\"test\": 123}");
     }
 
     #[test]
     fn test_extract_json_plain() {
         let response = "{\"test\": 123}";
-        assert_eq!(extract_json(response), "{\"test\": 123}");
+        assert_eq!(extract_json_from_response(response), "{\"test\": 123}");
     }
 
     #[test]
     fn test_extract_json_with_text() {
         let response = "Here is the result: {\"test\": 123} end";
-        assert_eq!(extract_json(response), "{\"test\": 123}");
+        assert_eq!(extract_json_from_response(response), "{\"test\": 123}");
     }
 }

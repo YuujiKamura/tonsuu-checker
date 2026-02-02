@@ -1,0 +1,7 @@
+ultralytics
+paddleocr
+paddlepaddle-gpu
+torch
+torchvision
+numpy
+pillow

@@ -63,6 +63,18 @@ pub enum Commands {
         /// Number of ensemble samples. Uses config value if not specified.
         #[arg(long, short = 'n')]
         ensemble: Option<u32>,
+
+        /// Specify license plate for vehicle matching (e.g., "熊本 130 ら 1122")
+        #[arg(long, short = 'p')]
+        plate: Option<String>,
+
+        /// Skip YOLO plate detection, use class only (2t, 4t, 増トン, 10t)
+        #[arg(long)]
+        skip_yolo_class_only: Option<String>,
+
+        /// Filter by transport company name (e.g., "松尾運搬")
+        #[arg(long)]
+        company: Option<String>,
     },
 
     /// Batch analyze images in a folder
@@ -119,6 +131,22 @@ pub enum Commands {
         #[arg(long)]
         set_ensemble: Option<u32>,
 
+        /// Enable/disable local license plate detection
+        #[arg(long)]
+        set_plate_local: Option<bool>,
+
+        /// Set local plate detection command
+        #[arg(long)]
+        set_plate_local_cmd: Option<String>,
+
+        /// Set local plate detection minimum confidence (0.0-1.0)
+        #[arg(long)]
+        set_plate_local_min_conf: Option<f32>,
+
+        /// If local detection fails, fall back to API stage1
+        #[arg(long)]
+        set_plate_local_fallback: Option<bool>,
+
         /// Reset to defaults
         #[arg(long)]
         reset: bool,
@@ -133,5 +161,67 @@ pub enum Commands {
         /// Show cache statistics
         #[arg(long)]
         stats: bool,
+    },
+
+    /// Add ground truth feedback for an analyzed image
+    Feedback {
+        /// Path to image file
+        image: PathBuf,
+
+        /// Actual tonnage (ground truth)
+        #[arg(long, short = 't')]
+        actual: f64,
+
+        /// Optional notes
+        #[arg(long, short = 'n')]
+        notes: Option<String>,
+    },
+
+    /// Show analysis history
+    History {
+        /// Show only entries with feedback
+        #[arg(long)]
+        with_feedback: bool,
+
+        /// Limit number of entries shown
+        #[arg(long, short = 'n', default_value = "20")]
+        limit: usize,
+    },
+
+    /// Show accuracy statistics
+    Accuracy {
+        /// Group by truck type
+        #[arg(long)]
+        by_truck: bool,
+
+        /// Group by material type
+        #[arg(long)]
+        by_material: bool,
+
+        /// Show detailed per-sample breakdown
+        #[arg(long)]
+        detailed: bool,
+    },
+
+    /// Auto-collect vehicles from folder (scan 車検証 PDFs and photos)
+    AutoCollect {
+        /// Path to folder containing vehicle subfolders
+        folder: PathBuf,
+
+        /// Skip confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+
+        /// Number of parallel analyses (default: 1)
+        #[arg(long, short = 'j', default_value = "1")]
+        jobs: usize,
+
+        /// Dry run - scan only, don't register
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Transport company name (e.g., "松尾運搬")
+        #[arg(long, short = 'c')]
+        company: Option<String>,
     },
 }

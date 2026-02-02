@@ -9,6 +9,10 @@ authors = ["yuuji"]
 name = "tonsuu-checker"
 path = "src/main.rs"
 
+[[bin]]
+name = "tonsuu-gui"
+path = "src/gui/main.rs"
+
 [dependencies]
 cli-ai-analyzer = { path = "../cli-ai-analyzer" }
 clap = { version = "4", features = ["derive"] }
@@ -24,6 +28,13 @@ sha2 = "0.10"
 image = "0.25"
 chrono = { version = "0.4", features = ["serde"] }
 num_cpus = "1.16"
+eframe = "0.31"
+egui_extras = { version = "0.31", features = ["image"] }
+rfd = "0.15"
+uuid = { version = "1.20.0", features = ["v4"] }
+base64 = "0.22.1"
+shell-words = "1.1.0"
 
 [dev-dependencies]
 ai-code-review = { path = "../ai-code-review" }
+tempfile = "3.24.0"

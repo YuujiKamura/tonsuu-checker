@@ -1,1 +1,8 @@
 /target
+/models/
+tests/fixtures/
+*.jpg
+*.jpeg
+*.png
+*.pt
+*.pdf

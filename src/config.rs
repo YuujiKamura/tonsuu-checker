@@ -33,6 +33,22 @@ pub struct Config {
     /// Number of ensemble samples for analysis
     #[serde(default = "default_ensemble_count")]
     pub ensemble_count: u32,
+
+    /// Enable local license plate detection/OCR
+    #[serde(default = "default_false")]
+    pub plate_local_enabled: bool,
+
+    /// Command to run local plate detector (e.g. "python scripts/plate_local.py")
+    #[serde(default)]
+    pub plate_local_command: Option<String>,
+
+    /// Minimum confidence threshold for local plate detection
+    #[serde(default = "default_plate_local_min_conf")]
+    pub plate_local_min_conf: f32,
+
+    /// If local detection fails, fall back to API-based stage1
+    #[serde(default = "default_true")]
+    pub plate_local_fallback_api: bool,
 }
 
 fn default_backend() -> String {
@@ -51,6 +67,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_false() -> bool {
+    false
+}
+
+fn default_plate_local_min_conf() -> f32 {
+    0.35
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -60,6 +84,10 @@ impl Default for Config {
             cache_dir: None,
             output_format: default_output_format(),
             ensemble_count: default_ensemble_count(),
+            plate_local_enabled: default_false(),
+            plate_local_command: None,
+            plate_local_min_conf: default_plate_local_min_conf(),
+            plate_local_fallback_api: default_true(),
         }
     }
 }
@@ -88,6 +116,14 @@ impl Config {
             .ok_or_else(|| ConfigError::NotFound)?
             .join("tonsuu-checker");
         Ok(cache_dir)
+    }
+
+    /// Get the store directory path (for history/feedback data)
+    pub fn store_dir(&self) -> Result<PathBuf> {
+        let data_dir = dirs::data_dir()
+            .ok_or_else(|| ConfigError::NotFound)?
+            .join("tonsuu-checker");
+        Ok(data_dir)
     }
 
     /// Load config from file, or create default
@@ -139,6 +175,24 @@ impl std::fmt::Display for Config {
         )?;
         writeln!(f, "Output format:  {}", self.output_format)?;
         writeln!(f, "Ensemble count: {}", self.ensemble_count)?;
+        writeln!(
+            f,
+            "Plate local:    {}",
+            if self.plate_local_enabled { "enabled" } else { "disabled" }
+        )?;
+        writeln!(
+            f,
+            "Plate command:  {}",
+            self.plate_local_command
+                .as_deref()
+                .unwrap_or("(not set)")
+        )?;
+        writeln!(f, "Plate min conf: {:.2}", self.plate_local_min_conf)?;
+        writeln!(
+            f,
+            "Plate fallback: {}",
+            if self.plate_local_fallback_api { "api" } else { "none" }
+        )?;
 
         if let Ok(path) = Self::config_path() {
             writeln!(f)?;

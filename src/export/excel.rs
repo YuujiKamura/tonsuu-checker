@@ -1,6 +1,7 @@
 //! Excel export functionality
 
 use crate::error::{Error, Result};
+use crate::constants::get_truck_spec;
 use crate::types::BatchResults;
 use rust_xlsxwriter::{Format, Workbook, Worksheet};
 use std::path::Path;
@@ -154,14 +155,14 @@ fn write_details_sheet(sheet: &mut Worksheet, results: &BatchResults) -> Result<
             .write_number(row, 4, result.estimated_tonnage)
             .map_err(|e| Error::Excel(e.to_string()))?;
 
-        // Max capacity
-        if let Some(max_cap) = result.estimated_max_capacity {
+        // Max capacity (from truck spec)
+        if let Some(spec) = get_truck_spec(&result.truck_type) {
             sheet
-                .write_number(row, 5, max_cap)
+                .write_number(row, 5, spec.max_capacity)
                 .map_err(|e| Error::Excel(e.to_string()))?;
 
             // Load percentage
-            let load_pct = (result.estimated_tonnage / max_cap) * 100.0;
+            let load_pct = (result.estimated_tonnage / spec.max_capacity) * 100.0;
             sheet
                 .write_number(row, 6, load_pct)
                 .map_err(|e| Error::Excel(e.to_string()))?;
