@@ -224,4 +224,14 @@ pub enum Commands {
         #[arg(long, short = 'c')]
         company: Option<String>,
     },
+
+    /// Import backup data from TonSuuChecker app
+    Import {
+        /// Path to backup JSON file
+        file: PathBuf,
+
+        /// Dry run - show what would be imported without actually importing
+        #[arg(long)]
+        dry_run: bool,
+    },
 }

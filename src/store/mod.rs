@@ -252,6 +252,22 @@ impl Store {
         Ok(self.entries.get(&hash))
     }
 
+    /// Add a pre-built history entry (for import)
+    /// Returns true if the entry was added, false if it already exists
+    pub fn add_entry(&mut self, entry: HistoryEntry) -> Result<bool> {
+        if self.entries.contains_key(&entry.image_hash) {
+            return Ok(false);
+        }
+        self.entries.insert(entry.image_hash.clone(), entry);
+        self.save()?;
+        Ok(true)
+    }
+
+    /// Check if entry with given hash exists
+    pub fn has_entry(&self, hash: &str) -> bool {
+        self.entries.contains_key(hash)
+    }
+
     /// Get entry by hash
     pub fn get_by_hash(&self, hash: &str) -> Option<&HistoryEntry> {
         self.entries.get(hash)

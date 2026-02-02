@@ -9,7 +9,7 @@ use crate::error::{Error, Result};
 use crate::export::export_to_excel;
 use crate::output::output_result;
 use crate::scanner::{scan_directory, validate_image};
-use crate::store::{Store, VehicleStore};
+use crate::store::{HistoryEntry, Store, VehicleStore};
 use crate::types::{AnalysisEntry, BatchResults, EstimationResult, LoadGrade, RegisteredVehicle};
 use chrono::Utc;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -225,6 +225,8 @@ pub fn execute(cli: Cli) -> Result<()> {
             dry_run,
             company,
         } => cmd_auto_collect(&cli, &config, folder.clone(), *yes, *jobs, *dry_run, company.clone()),
+
+        Commands::Import { file, dry_run } => cmd_import(&config, file.clone(), *dry_run),
     }
 }
 
@@ -1660,5 +1662,179 @@ fn create_thumbnail_from_path(path: &PathBuf) -> Option<String> {
     file.read_to_end(&mut buffer).ok()?;
 
     Some(STANDARD.encode(&buffer))
+}
+
+/// Backup JSON stock entry from TonSuuChecker app
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BackupStockEntry {
+    id: String,
+    timestamp: i64,
+    #[serde(default)]
+    base64_images: Vec<String>,
+    #[serde(default)]
+    max_capacity: Option<f64>,
+    #[serde(default)]
+    actual_tonnage: Option<f64>,
+    #[serde(default)]
+    estimations: Vec<BackupEstimation>,
+}
+
+/// Backup estimation from TonSuuChecker app
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BackupEstimation {
+    #[serde(default)]
+    is_target_detected: bool,
+    #[serde(default)]
+    truck_type: String,
+    #[serde(default)]
+    material_type: String,
+    #[serde(default)]
+    estimated_volume_m3: f64,
+    #[serde(default)]
+    estimated_tonnage: f64,
+    #[serde(default)]
+    estimated_max_capacity: Option<f64>,
+    #[serde(default)]
+    confidence_score: f64,
+    #[serde(default)]
+    reasoning: String,
+    #[serde(default)]
+    license_plate: Option<String>,
+}
+
+/// Backup JSON structure from TonSuuChecker app
+#[derive(Debug, Deserialize)]
+struct BackupJson {
+    #[serde(default)]
+    version: i32,
+    #[serde(default)]
+    stock: Vec<BackupStockEntry>,
+}
+
+fn cmd_import(config: &Config, file: PathBuf, dry_run: bool) -> Result<()> {
+    use chrono::{TimeZone, Utc};
+
+    if !file.exists() {
+        return Err(Error::FileNotFound(format!(
+            "Backup file not found: {}",
+            file.display()
+        )));
+    }
+
+    println!("Reading backup file: {}", file.display());
+
+    // Read and parse backup JSON
+    let content = std::fs::read_to_string(&file)?;
+    let backup: BackupJson = serde_json::from_str(&content)
+        .map_err(|e| Error::AnalysisFailed(format!("Failed to parse backup JSON: {}", e)))?;
+
+    println!("Backup version: {}", backup.version);
+    println!("Total entries in backup: {}", backup.stock.len());
+
+    if backup.stock.is_empty() {
+        println!("No entries to import.");
+        return Ok(());
+    }
+
+    // Open store
+    let mut store = Store::open(config.store_dir()?)?;
+
+    let mut imported = 0;
+    let mut skipped = 0;
+    let mut errors = 0;
+
+    for entry in &backup.stock {
+        // Use ID as image_hash for duplicate checking
+        let image_hash = entry.id.clone();
+
+        // Check if already exists
+        if store.has_entry(&image_hash) {
+            skipped += 1;
+            continue;
+        }
+
+        // Convert timestamp (milliseconds) to DateTime
+        let analyzed_at = Utc
+            .timestamp_millis_opt(entry.timestamp)
+            .single()
+            .unwrap_or_else(Utc::now);
+
+        // Get first estimation if available
+        let estimation = if let Some(est) = entry.estimations.first() {
+            EstimationResult {
+                is_target_detected: est.is_target_detected,
+                truck_type: est.truck_type.clone(),
+                license_plate: est.license_plate.clone(),
+                license_number: None,
+                material_type: est.material_type.clone(),
+                upper_area: None,
+                height: None,
+                slope: None,
+                void_ratio: None,
+                estimated_volume_m3: est.estimated_volume_m3,
+                estimated_tonnage: est.estimated_tonnage,
+                confidence_score: est.confidence_score,
+                reasoning: est.reasoning.clone(),
+                material_breakdown: Vec::new(),
+                ensemble_count: None,
+            }
+        } else {
+            // No estimation, create default
+            EstimationResult::default()
+        };
+
+        // Create HistoryEntry
+        let history_entry = HistoryEntry {
+            image_path: format!("[imported from backup: {}]", entry.id),
+            image_hash,
+            estimation,
+            actual_tonnage: entry.actual_tonnage,
+            max_capacity: entry.max_capacity,
+            analyzed_at,
+            feedback_at: entry.actual_tonnage.map(|_| analyzed_at),
+            notes: Some("Imported from TonSuuChecker app backup".to_string()),
+            thumbnail_base64: entry.base64_images.first().cloned(),
+        };
+
+        if dry_run {
+            println!(
+                "  [DRY RUN] Would import: {} - {:.2}t ({})",
+                &history_entry.image_hash[..8],
+                history_entry.estimation.estimated_tonnage,
+                history_entry.estimation.truck_type
+            );
+            imported += 1;
+        } else {
+            match store.add_entry(history_entry) {
+                Ok(true) => {
+                    imported += 1;
+                }
+                Ok(false) => {
+                    skipped += 1;
+                }
+                Err(e) => {
+                    eprintln!("  Error importing {}: {}", entry.id, e);
+                    errors += 1;
+                }
+            }
+        }
+    }
+
+    println!();
+    if dry_run {
+        println!("[DRY RUN] Import summary:");
+        println!("  Would import: {}", imported);
+        println!("  Would skip (duplicates): {}", skipped);
+    } else {
+        println!("Import complete:");
+        println!("  Imported: {}", imported);
+        println!("  Skipped (duplicates): {}", skipped);
+        println!("  Errors: {}", errors);
+        println!("  Total entries in store: {}", store.count());
+    }
+
+    Ok(())
 }
 
