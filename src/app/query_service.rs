@@ -1,10 +1,14 @@
-#![allow(dead_code)]
 //! Query Service - Access Stored Data
 //!
 //! This service provides read-only access to stored data:
 //! - Analysis history
 //! - Registered vehicles
 //! - Accuracy statistics
+//!
+//! Note: This module is prepared for future GUI/API integration.
+//! Currently unused but maintained for planned features.
+
+#![allow(dead_code)]
 
 use crate::config::Config;
 use crate::store::{AccuracyStats, HistoryEntry, Store, VehicleStore};

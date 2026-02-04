@@ -1,6 +1,7 @@
 //! Image scanning and validation
-
-#![allow(dead_code)]
+//!
+//! Note: The vehicles submodule is prepared for batch vehicle folder scanning.
+//! Currently unused but maintained for planned batch import feature.
 
 pub mod vehicles;
 
@@ -84,6 +85,7 @@ pub fn scan_directory(dir: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// Get image dimensions
+#[allow(dead_code)]
 pub fn get_image_dimensions(path: &Path) -> Result<(u32, u32)> {
     let img = image::open(path)?;
     Ok((img.width(), img.height()))

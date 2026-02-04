@@ -1,7 +1,5 @@
 //! Truck specifications for Japanese dump trucks
 
-#![allow(dead_code)]
-
 use crate::config::load_truck_specs;
 use crate::domain::TruckSpec;
 
@@ -36,6 +34,7 @@ pub fn get_truck_spec(truck_type: &str) -> Option<&'static TruckSpec> {
 }
 
 /// Get max capacity for a truck type
+#[allow(dead_code)]
 pub fn get_max_capacity(truck_type: &str) -> Option<f64> {
     get_truck_spec(truck_type).map(|s| s.max_capacity)
 }

@@ -33,6 +33,8 @@ pub struct TrucksConfig {
 }
 
 /// Material entry in TOML config
+/// Note: Prepared for material specification loading. Currently unused.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct MaterialConfigEntry {
     pub id: String,
@@ -42,6 +44,8 @@ pub struct MaterialConfigEntry {
 }
 
 /// Materials config file structure
+/// Note: Prepared for material specification loading. Currently unused.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct MaterialsConfig {
     pub materials: Vec<MaterialConfigEntry>,
@@ -54,12 +58,15 @@ pub struct LoadedTruckSpecs {
 }
 
 /// Loaded material specs
+/// Note: Prepared for material specification loading. Currently unused.
+#[allow(dead_code)]
 pub struct LoadedMaterialSpecs {
     pub specs: HashMap<String, MaterialSpec>,
 }
 
 // Static storage for loaded specs (stores Result to handle errors)
 static LOADED_TRUCK_SPECS: OnceLock<std::result::Result<LoadedTruckSpecs, String>> = OnceLock::new();
+#[allow(dead_code)]
 static LOADED_MATERIAL_SPECS: OnceLock<std::result::Result<LoadedMaterialSpecs, String>> = OnceLock::new();
 
 /// Get the config directory path relative to the executable or project root
@@ -141,6 +148,8 @@ pub fn load_truck_specs() -> Result<&'static LoadedTruckSpecs> {
 }
 
 /// Internal function to load material specs
+/// Note: Prepared for material specification loading. Currently unused.
+#[allow(dead_code)]
 fn load_material_specs_internal() -> std::result::Result<LoadedMaterialSpecs, String> {
     let config_path = get_config_dir().join("materials.toml");
     let content = std::fs::read_to_string(&config_path).map_err(|e| {
@@ -169,6 +178,8 @@ fn load_material_specs_internal() -> std::result::Result<LoadedMaterialSpecs, St
 }
 
 /// Load material specs from TOML config file
+/// Note: Prepared for material specification loading. Currently unused.
+#[allow(dead_code)]
 pub fn load_material_specs() -> Result<&'static LoadedMaterialSpecs> {
     let result = LOADED_MATERIAL_SPECS.get_or_init(load_material_specs_internal);
     match result {

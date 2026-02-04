@@ -3,6 +3,9 @@
 //! This module provides pure weight calculation functions based on
 //! volume, density, and void ratio. For material lookup functionality,
 //! use `constants::weight_calculator::calculate_weight`.
+//!
+//! Note: Prepared for weight calculation service layer.
+//! Currently unused but maintained for planned calculation feature.
 
 #![allow(dead_code)]
 

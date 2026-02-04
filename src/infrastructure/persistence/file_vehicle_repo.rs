@@ -1,4 +1,7 @@
 //! File-based vehicle repository implementation
+//!
+//! Note: Alternative vehicle storage implementation using domain repository pattern.
+//! Currently unused but maintained for future repository abstraction.
 
 #![allow(dead_code)]
 

@@ -1,4 +1,7 @@
 //! File-based implementation of VehicleMasterRepository
+//!
+//! Note: Prepared for vehicle master data repository.
+//! Currently unused but maintained for planned master data feature.
 
 #![allow(dead_code)]
 

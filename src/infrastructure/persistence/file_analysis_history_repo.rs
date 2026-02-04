@@ -1,4 +1,7 @@
 //! File-based analysis history repository implementation
+//!
+//! Note: Alternative history storage implementation using domain repository pattern.
+//! Currently unused but maintained for future repository abstraction.
 
 #![allow(dead_code)]
 

@@ -2,7 +2,6 @@
 //!
 //! Dump truck cargo weight estimation using AI image analysis.
 
-pub mod analyzer;
 pub mod app;
 pub mod cli;
 pub mod commands;

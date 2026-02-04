@@ -5,10 +5,12 @@
 //! - Step2: 高さ推定
 //! - Step3: 空隙率推定
 //! - Step4: 最終計算
-
-#![allow(dead_code)]
+//!
+//! Note: Many prompts are prepared for future multi-step analysis.
+//! Currently using simplified prompts, but step-by-step versions are maintained.
 
 /// Core rules prompt (shared base for all prompts)
+#[allow(dead_code)]
 pub const CORE_RULES_PROMPT: &str = r#"あなたは建設廃棄物（ガラ）の重量推定を行うシステムです。
 
 【最重要：創作・推測の禁止】
@@ -26,6 +28,7 @@ pub const CORE_RULES_PROMPT: &str = r#"あなたは建設廃棄物（ガラ）�
 // ============================================================================
 
 /// 用語定義
+#[allow(dead_code)]
 pub const TERMINOLOGY_PROMPT: &str = r#"
 【用語定義】
 - 後板: 荷台後方の固定された板。赤色。高さ約30cm。
@@ -36,6 +39,7 @@ pub const TERMINOLOGY_PROMPT: &str = r#"
 "#;
 
 /// Step1: 高さ推定
+#[allow(dead_code)]
 pub const STEP1_HEIGHT_PROMPT: &str = r#"
 【高さ推定】
 
@@ -52,6 +56,7 @@ pub const STEP1_HEIGHT_PROMPT: &str = r#"
 }"#;
 
 /// Step2: 上面積推定
+#[allow(dead_code)]
 pub const STEP2_UPPER_AREA_PROMPT: &str = r#"
 【上面積推定】
 
@@ -65,6 +70,7 @@ pub const STEP2_UPPER_AREA_PROMPT: &str = r#"
 }"#;
 
 /// Step3: 空隙率推定
+#[allow(dead_code)]
 pub const STEP3_VOID_RATIO_PROMPT: &str = r#"
 【空隙率推定】
 
@@ -92,6 +98,7 @@ pub fn build_estimation_prompt(truck_type: &str, material_type: &str) -> String 
 }
 
 /// Load grade definitions for prompt
+#[allow(dead_code)]
 pub const LOAD_GRADES_PROMPT: &str = r#"■ 積載等級（実測値 ÷ 最大積載量）
 - 軽すぎ: 0〜80%
 - 軽め: 80〜90%
@@ -100,6 +107,7 @@ pub const LOAD_GRADES_PROMPT: &str = r#"■ 積載等級（実測値 ÷ 最大�
 - 積みすぎ: 100%超"#;
 
 /// Registered vehicle info for prompt
+#[allow(dead_code)]
 pub struct RegisteredVehicleInfo {
     pub license_plate: String,
     pub name: String,
@@ -107,6 +115,7 @@ pub struct RegisteredVehicleInfo {
 }
 
 /// Graded reference item for prompt building
+#[allow(dead_code)]
 pub struct GradedReferenceItem {
     pub grade_name: String,
     pub actual_tonnage: f64,
@@ -125,6 +134,7 @@ pub fn build_analysis_prompt() -> String {
 }
 
 /// Build analysis prompt with max capacity instruction
+#[allow(dead_code)]
 pub fn build_analysis_prompt_with_capacity(max_capacity: Option<f64>) -> String {
     let capacity_instruction = if let Some(cap) = max_capacity {
         format!("【重要】この車両の最大積載量は{}トンです。\n\n", cap)
@@ -148,6 +158,7 @@ pub fn build_staged_analysis_prompt(
 }
 
 /// Build batch analysis prompt
+#[allow(dead_code)]
 pub fn build_batch_prompt(image_count: usize) -> String {
     format!(
         "{}\n{}\n\n{}枚の画像を順番に分析し、各画像の結果をJSON配列で返してください。",
@@ -156,6 +167,7 @@ pub fn build_batch_prompt(image_count: usize) -> String {
 }
 
 /// Build combined analysis prompt (plate crop + full image in one call)
+#[allow(dead_code)]
 pub fn build_combined_analysis_prompt(vehicles: &[RegisteredVehicleInfo]) -> String {
     let mut prompt = String::from(CORE_RULES_PROMPT);
     prompt.push_str("\n\n");
@@ -190,6 +202,7 @@ B) 車体の特徴確認（2枚目）:
 }
 
 /// Build combined analysis prompt with registered vehicle reference photos
+#[allow(dead_code)]
 pub fn build_combined_analysis_prompt_with_refs(
     vehicles: &[RegisteredVehicleInfo],
     vehicle_photos: &[(String, std::path::PathBuf)],
@@ -250,6 +263,7 @@ B) 車体特徴照合（2枚目 vs 3枚目以降の参照写真）:
 // ============================================================================
 
 /// 段階別プロンプトを配列で定義（計算はプログラム側）
+#[allow(dead_code)]
 pub const STEP_PROMPTS: &[&str] = &[
     STEP1_HEIGHT_PROMPT,
     STEP2_UPPER_AREA_PROMPT,
@@ -257,6 +271,7 @@ pub const STEP_PROMPTS: &[&str] = &[
 ];
 
 /// 段階別プロンプトを取得 (0-indexed)
+#[allow(dead_code)]
 pub fn get_step_prompt(step: usize) -> Option<&'static str> {
     STEP_PROMPTS.get(step).copied()
 }
@@ -266,9 +281,11 @@ pub fn get_step_prompt(step: usize) -> Option<&'static str> {
 // ============================================================================
 
 /// Alias for build_analysis_prompt (backward compatibility)
+#[allow(dead_code)]
 pub fn build_analysis_prompt_with_vehicles(vehicles: &[RegisteredVehicleInfo]) -> String {
     build_combined_analysis_prompt(vehicles)
 }
 
 /// Legacy constant alias
+#[allow(dead_code)]
 pub const SYSTEM_PROMPT: &str = CORE_RULES_PROMPT;

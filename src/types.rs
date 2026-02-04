@@ -1,7 +1,5 @@
 //! Core types for tonnage estimation
 
-#![allow(dead_code)]
-
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// Deserialize null as default value

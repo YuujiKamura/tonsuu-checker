@@ -1,7 +1,7 @@
 //! Command handlers
 
-use crate::analyzer::cache::Cache;
-use crate::analyzer::{analyze_image, AnalyzerConfig};
+use crate::vision::cache::Cache;
+use crate::vision::{analyze_image, AnalyzerConfig};
 use crate::app::{self, AnalysisOptions};
 use cli_ai_analyzer::check_gemini_status;
 use crate::cli::{Cli, Commands, OutputFormat};
@@ -311,7 +311,7 @@ fn cmd_analyze(
 
     // Create progress callback for verbose mode
     let progress_cb = if cli.verbose {
-        Some(Box::new(|msg: &str| eprintln!("  {}", msg)) as crate::analyzer::ProgressCallback)
+        Some(Box::new(|msg: &str| eprintln!("  {}", msg)) as crate::vision::ProgressCallback)
     } else {
         None
     };

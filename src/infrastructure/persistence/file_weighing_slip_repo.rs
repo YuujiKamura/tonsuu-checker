@@ -1,4 +1,7 @@
 //! File-based implementation of WeighingSlipRepository
+//!
+//! Note: Prepared for storing weighing slip data.
+//! Currently unused but maintained for planned weighing slip feature.
 
 #![allow(dead_code)]
 

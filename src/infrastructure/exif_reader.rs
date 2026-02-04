@@ -1,6 +1,9 @@
 //! EXIF metadata reader for photos
 //!
 //! Extracts capture datetime and other metadata from image files.
+//!
+//! Note: Prepared for extracting capture time from photos.
+//! Currently unused but maintained for planned photo metadata feature.
 
 #![allow(dead_code)]
 

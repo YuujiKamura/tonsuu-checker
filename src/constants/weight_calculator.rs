@@ -6,6 +6,9 @@
 //! For direct calculation without lookup, use:
 //! - `domain::service::weight_calculator::calculate_weight_explicit`
 //! - `domain::service::weight_calculator::calculate_weight_from_spec`
+//!
+//! Note: Prepared for material-based weight calculation.
+//! Currently unused but maintained for planned weight calculation feature.
 
 #![allow(dead_code)]
 

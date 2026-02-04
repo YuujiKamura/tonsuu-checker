@@ -1,6 +1,9 @@
 //! CSV loader for weighing slips (計量伝票)
 //!
 //! Handles CP932 (Shift-JIS) encoded CSV files commonly used in Japanese business systems.
+//!
+//! Note: Prepared for importing weighing slip data from external systems.
+//! Currently unused but maintained for planned CSV import feature.
 
 #![allow(dead_code)]
 

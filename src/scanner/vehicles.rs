@@ -3,6 +3,11 @@
 //! This module provides functionality to scan a folder structure where each
 //! subfolder represents a vehicle, and automatically identifies potential
 //! 車検証 (vehicle inspection certificate) images vs regular vehicle photos.
+//!
+//! Note: Prepared for batch vehicle folder scanning and import.
+//! Currently unused but maintained for planned batch import feature.
+
+#![allow(dead_code)]
 
 use crate::error::{Error, Result};
 use std::collections::HashMap;

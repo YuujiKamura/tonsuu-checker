@@ -1,6 +1,10 @@
 //! Import data from legacy TonSuuChecker_local (TypeScript/React version)
 //!
 //! Reads the JSON backup format exported by the old web app.
+//!
+//! Note: This module imports data from the previous TypeScript version.
+//! Currently unused but maintained for migration support.
+
 #![allow(dead_code)]
 
 use std::collections::HashMap;

@@ -1,4 +1,7 @@
 //! Material specifications for weight calculation
+//!
+//! Note: Prepared for material-based weight calculation.
+//! Currently unused but maintained for planned weight calculation feature.
 
 #![allow(dead_code)]
 

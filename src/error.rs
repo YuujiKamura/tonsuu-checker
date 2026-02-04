@@ -1,7 +1,5 @@
 //! Error types for tonnage-checker
 
-#![allow(dead_code)]
-
 use thiserror::Error;
 
 /// Configuration-related errors
@@ -13,6 +11,7 @@ pub enum ConfigError {
     #[error("Failed to parse configuration: {0}")]
     ParseError(String),
 
+    #[allow(dead_code)]
     #[error("Failed to save configuration: {0}")]
     SaveError(String),
 }
@@ -20,9 +19,11 @@ pub enum ConfigError {
 /// Cache-related errors
 #[derive(Debug, Error)]
 pub enum CacheError {
+    #[allow(dead_code)]
     #[error("Cache entry not found")]
     NotFound,
 
+    #[allow(dead_code)]
     #[error("Cache data corrupted: {0}")]
     Corrupted(String),
 
@@ -50,6 +51,7 @@ pub enum Error {
     #[error("Cache error: {0}")]
     Cache(#[from] CacheError),
 
+    #[allow(dead_code)]
     #[error("CSV loader error: {0}")]
     CsvLoader(String),
 
@@ -65,6 +67,7 @@ pub enum Error {
     #[error("Excel export error: {0}")]
     Excel(String),
 
+    #[allow(dead_code)]
     #[error("No target detected in image")]
     NoTargetDetected,
 }

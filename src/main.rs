@@ -2,7 +2,6 @@
 //!
 //! A CLI tool that analyzes images of dump trucks to estimate cargo weight.
 
-mod analyzer;
 mod app;
 mod cli;
 mod commands;

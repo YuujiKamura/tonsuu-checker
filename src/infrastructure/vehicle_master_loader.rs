@@ -1,4 +1,7 @@
 //! Vehicle master data loader from TOML configuration
+//!
+//! Note: Prepared for loading vehicle master data from TOML files.
+//! Currently unused but maintained for planned master data import feature.
 
 #![allow(dead_code)]
 
