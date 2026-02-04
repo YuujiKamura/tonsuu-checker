@@ -1,0 +1,26 @@
+# Material specifications for weight calculation
+# Each material has density (t/m3) and void ratio properties
+
+[[materials]]
+id = "土砂"
+name = "土砂"
+density = 1.8
+void_ratio = 0.05  # 3-8%
+
+[[materials]]
+id = "As殻"
+name = "As殻"
+density = 2.5
+void_ratio = 0.30  # 25-35%
+
+[[materials]]
+id = "Co殻"
+name = "Co殻"
+density = 2.5
+void_ratio = 0.30  # 25-35%
+
+[[materials]]
+id = "開粒度As殻"
+name = "開粒度As殻"
+density = 2.35
+void_ratio = 0.35  # 30-40%

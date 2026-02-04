@@ -2,120 +2,31 @@
 
 #![allow(dead_code)]
 
-use crate::types::TruckSpec;
-use std::collections::HashMap;
-use std::sync::LazyLock;
-
-/// Standard truck specifications
-pub static TRUCK_SPECS: LazyLock<HashMap<&'static str, TruckSpec>> = LazyLock::new(|| {
-    let mut m = HashMap::new();
-
-    m.insert(
-        "2t",
-        TruckSpec {
-            name: "2tダンプ".to_string(),
-            max_capacity: 2.0,
-            bed_length: 3.0,
-            bed_width: 1.6,
-            bed_height: 0.32,
-            level_volume: 1.5,
-            heap_volume: 2.0,
-        },
-    );
-
-    m.insert(
-        "4t",
-        TruckSpec {
-            name: "4tダンプ".to_string(),
-            max_capacity: 4.0,
-            bed_length: 3.4,
-            bed_width: 2.06,
-            bed_height: 0.34,
-            level_volume: 2.0,
-            heap_volume: 2.4,
-        },
-    );
-
-    m.insert(
-        "増トン",
-        TruckSpec {
-            name: "増トンダンプ".to_string(),
-            max_capacity: 6.5,
-            bed_length: 4.0,
-            bed_width: 2.2,
-            bed_height: 0.40,
-            level_volume: 3.5,
-            heap_volume: 4.5,
-        },
-    );
-
-    m.insert(
-        "10t",
-        TruckSpec {
-            name: "10tダンプ".to_string(),
-            max_capacity: 10.0,
-            bed_length: 5.3,
-            bed_width: 2.3,
-            bed_height: 0.50,
-            level_volume: 6.0,
-            heap_volume: 7.8,
-        },
-    );
-
-    m
-});
-
-/// Truck type aliases for flexible input matching
-pub static TRUCK_ALIASES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
-    let mut m = HashMap::new();
-
-    // 2-ton aliases
-    m.insert("2トン", "2t");
-    m.insert("2トンダンプ", "2t");
-    m.insert("2t ダンプ", "2t");
-    m.insert("2tダンプ", "2t");
-
-    // 4-ton aliases
-    m.insert("4トン", "4t");
-    m.insert("4トンダンプ", "4t");
-    m.insert("4t ダンプ", "4t");
-    m.insert("4tダンプ", "4t");
-
-    // 10-ton aliases
-    m.insert("10トン", "10t");
-    m.insert("10トンダンプ", "10t");
-    m.insert("10t ダンプ", "10t");
-    m.insert("10tダンプ", "10t");
-
-    // Increased-ton (増トン) aliases
-    m.insert("増トンダンプ", "増トン");
-    m.insert("増t", "増トン");
-    m.insert("増", "増トン");
-
-    m
-});
+use crate::config::load_truck_specs;
+use crate::domain::TruckSpec;
 
 /// Get truck spec by type name
 pub fn get_truck_spec(truck_type: &str) -> Option<&'static TruckSpec> {
+    let loaded = load_truck_specs().ok()?;
     let trimmed = truck_type.trim();
 
-    // Step 1: Try direct lookup in TRUCK_SPECS first
-    if let Some(spec) = TRUCK_SPECS.get(trimmed) {
+    // Step 1: Try direct lookup in specs first
+    if let Some(spec) = loaded.specs.get(trimmed) {
         return Some(spec);
     }
 
     // Step 2: Try alias resolution
-    if let Some(&canonical_name) = TRUCK_ALIASES.get(trimmed) {
-        if let Some(spec) = TRUCK_SPECS.get(canonical_name) {
+    if let Some(canonical_name) = loaded.aliases.get(trimmed) {
+        if let Some(spec) = loaded.specs.get(canonical_name) {
             return Some(spec);
         }
     }
 
     // Step 3: Case-insensitive alias lookup (for mixed case inputs)
     let lower_input = trimmed.to_lowercase();
-    for (alias, canonical) in TRUCK_ALIASES.iter() {
+    for (alias, canonical) in loaded.aliases.iter() {
         if alias.to_lowercase() == lower_input {
-            if let Some(spec) = TRUCK_SPECS.get(canonical) {
+            if let Some(spec) = loaded.specs.get(canonical) {
                 return Some(spec);
             }
         }

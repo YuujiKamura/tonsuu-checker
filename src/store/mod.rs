@@ -1,4 +1,7 @@
 //! Persistent store for analysis results with ground truth
+//!
+//! This module provides the store functionality for analysis history.
+//! For new code using the Repository Pattern, see the `infrastructure` module.
 
 pub mod vehicles;
 
@@ -30,7 +33,7 @@ pub struct HistoryEntry {
     #[serde(default)]
     pub actual_tonnage: Option<f64>,
 
-    /// Maximum capacity from vehicle registration (車検証)
+    /// Maximum capacity from vehicle registration (vehicle inspection certificate)
     #[serde(default)]
     pub max_capacity: Option<f64>,
 
@@ -59,6 +62,106 @@ pub struct GradedHistoryEntry {
     pub grade: LoadGrade,
     /// Load ratio (actual / max_capacity) as percentage
     pub load_ratio: f64,
+}
+
+/// Single sample for accuracy calculation
+#[derive(Debug, Clone)]
+pub struct AccuracySample {
+    pub estimated: f64,
+    pub actual: f64,
+    pub truck_type: String,
+    pub material_type: String,
+}
+
+impl AccuracySample {
+    pub fn error(&self) -> f64 {
+        self.estimated - self.actual
+    }
+
+    pub fn abs_error(&self) -> f64 {
+        self.error().abs()
+    }
+
+    pub fn percent_error(&self) -> f64 {
+        if self.actual > 0.0 {
+            (self.error() / self.actual) * 100.0
+        } else {
+            0.0
+        }
+    }
+}
+
+/// Accuracy statistics
+#[derive(Debug, Clone, Default)]
+pub struct AccuracyStats {
+    pub sample_count: usize,
+    pub mean_error: f64,
+    pub mean_abs_error: f64,
+    pub mean_percent_error: f64,
+    pub rmse: f64,
+    pub max_error: f64,
+    pub min_error: f64,
+    pub samples: Vec<AccuracySample>,
+}
+
+impl AccuracyStats {
+    pub fn from_samples(samples: Vec<AccuracySample>) -> Self {
+        if samples.is_empty() {
+            return Self::default();
+        }
+
+        let n = samples.len() as f64;
+
+        let sum_error: f64 = samples.iter().map(|s| s.error()).sum();
+        let sum_abs_error: f64 = samples.iter().map(|s| s.abs_error()).sum();
+        let sum_pct_error: f64 = samples.iter().map(|s| s.percent_error().abs()).sum();
+        let sum_sq_error: f64 = samples.iter().map(|s| s.error().powi(2)).sum();
+
+        let errors: Vec<f64> = samples.iter().map(|s| s.error()).collect();
+        let max_error = errors.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let min_error = errors.iter().cloned().fold(f64::INFINITY, f64::min);
+
+        Self {
+            sample_count: samples.len(),
+            mean_error: sum_error / n,
+            mean_abs_error: sum_abs_error / n,
+            mean_percent_error: sum_pct_error / n,
+            rmse: (sum_sq_error / n).sqrt(),
+            max_error,
+            min_error,
+            samples,
+        }
+    }
+
+    /// Group by truck type
+    pub fn by_truck_type(&self) -> HashMap<String, AccuracyStats> {
+        let mut groups: HashMap<String, Vec<AccuracySample>> = HashMap::new();
+        for sample in &self.samples {
+            groups
+                .entry(sample.truck_type.clone())
+                .or_default()
+                .push(sample.clone());
+        }
+        groups
+            .into_iter()
+            .map(|(k, v)| (k, Self::from_samples(v)))
+            .collect()
+    }
+
+    /// Group by material type
+    pub fn by_material_type(&self) -> HashMap<String, AccuracyStats> {
+        let mut groups: HashMap<String, Vec<AccuracySample>> = HashMap::new();
+        for sample in &self.samples {
+            groups
+                .entry(sample.material_type.clone())
+                .or_default()
+                .push(sample.clone());
+        }
+        groups
+            .into_iter()
+            .map(|(k, v)| (k, Self::from_samples(v)))
+            .collect()
+    }
 }
 
 /// Persistent store for history entries
@@ -227,7 +330,7 @@ impl Store {
             LoadGrade::Overloaded,
         ];
 
-        let mut result = Vec::new();
+        let mut result: Vec<GradedHistoryEntry> = Vec::new();
         for grade in grades {
             let mut items_in_grade: Vec<_> = graded_items
                 .iter()
@@ -269,6 +372,7 @@ impl Store {
     }
 
     /// Get entry by hash
+    #[allow(dead_code)]
     pub fn get_by_hash(&self, hash: &str) -> Option<&HistoryEntry> {
         self.entries.get(hash)
     }
@@ -301,6 +405,13 @@ impl Store {
             .count()
     }
 
+    /// Clear all entries (for refresh import)
+    #[allow(dead_code)]
+    pub fn clear(&mut self) -> Result<()> {
+        self.entries.clear();
+        self.save()
+    }
+
     /// Calculate accuracy statistics
     pub fn accuracy_stats(&self) -> AccuracyStats {
         let entries: Vec<_> = self
@@ -317,105 +428,5 @@ impl Store {
             .collect();
 
         AccuracyStats::from_samples(entries)
-    }
-}
-
-/// Single sample for accuracy calculation
-#[derive(Debug, Clone)]
-pub struct AccuracySample {
-    pub estimated: f64,
-    pub actual: f64,
-    pub truck_type: String,
-    pub material_type: String,
-}
-
-impl AccuracySample {
-    pub fn error(&self) -> f64 {
-        self.estimated - self.actual
-    }
-
-    pub fn abs_error(&self) -> f64 {
-        self.error().abs()
-    }
-
-    pub fn percent_error(&self) -> f64 {
-        if self.actual > 0.0 {
-            (self.error() / self.actual) * 100.0
-        } else {
-            0.0
-        }
-    }
-}
-
-/// Accuracy statistics
-#[derive(Debug, Clone, Default)]
-pub struct AccuracyStats {
-    pub sample_count: usize,
-    pub mean_error: f64,
-    pub mean_abs_error: f64,
-    pub mean_percent_error: f64,
-    pub rmse: f64,
-    pub max_error: f64,
-    pub min_error: f64,
-    pub samples: Vec<AccuracySample>,
-}
-
-impl AccuracyStats {
-    pub fn from_samples(samples: Vec<AccuracySample>) -> Self {
-        if samples.is_empty() {
-            return Self::default();
-        }
-
-        let n = samples.len() as f64;
-
-        let sum_error: f64 = samples.iter().map(|s| s.error()).sum();
-        let sum_abs_error: f64 = samples.iter().map(|s| s.abs_error()).sum();
-        let sum_pct_error: f64 = samples.iter().map(|s| s.percent_error().abs()).sum();
-        let sum_sq_error: f64 = samples.iter().map(|s| s.error().powi(2)).sum();
-
-        let errors: Vec<f64> = samples.iter().map(|s| s.error()).collect();
-        let max_error = errors.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        let min_error = errors.iter().cloned().fold(f64::INFINITY, f64::min);
-
-        Self {
-            sample_count: samples.len(),
-            mean_error: sum_error / n,
-            mean_abs_error: sum_abs_error / n,
-            mean_percent_error: sum_pct_error / n,
-            rmse: (sum_sq_error / n).sqrt(),
-            max_error,
-            min_error,
-            samples,
-        }
-    }
-
-    /// Group by truck type
-    pub fn by_truck_type(&self) -> HashMap<String, AccuracyStats> {
-        let mut groups: HashMap<String, Vec<AccuracySample>> = HashMap::new();
-        for sample in &self.samples {
-            groups
-                .entry(sample.truck_type.clone())
-                .or_default()
-                .push(sample.clone());
-        }
-        groups
-            .into_iter()
-            .map(|(k, v)| (k, Self::from_samples(v)))
-            .collect()
-    }
-
-    /// Group by material type
-    pub fn by_material_type(&self) -> HashMap<String, AccuracyStats> {
-        let mut groups: HashMap<String, Vec<AccuracySample>> = HashMap::new();
-        for sample in &self.samples {
-            groups
-                .entry(sample.material_type.clone())
-                .or_default()
-                .push(sample.clone());
-        }
-        groups
-            .into_iter()
-            .map(|(k, v)| (k, Self::from_samples(v)))
-            .collect()
     }
 }

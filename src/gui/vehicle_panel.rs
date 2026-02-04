@@ -11,6 +11,7 @@ use cli_ai_analyzer::{analyze, AnalyzeOptions, Backend};
 
 /// Scanned vehicle folder information
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ScannedVehicleFolder {
     /// Folder name (will be used for vehicle name)
     pub folder_name: String,
@@ -33,6 +34,7 @@ pub struct FolderScanResult {
 
 /// Status message from processing thread
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum ProcessStatus {
     /// Scanning folders
     Scanning,
@@ -52,6 +54,7 @@ pub enum ProcessStatus {
 
 /// Result of a single vehicle processing
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct VehicleProcessResult {
     pub folder_name: String,
     pub success: bool,
@@ -71,6 +74,7 @@ pub struct VehiclePanel {
     /// Status message
     status_message: Option<(String, bool)>, // (message, is_error)
     /// Selected vehicle ID for details
+    #[allow(dead_code)]
     selected_id: Option<String>,
     /// Folder scan result
     scan_result: Option<FolderScanResult>,

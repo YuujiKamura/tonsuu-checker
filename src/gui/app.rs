@@ -184,8 +184,14 @@ impl eframe::App for TonsuuApp {
                     if let Some(action) = self.history_panel.take_pending_action() {
                         match action {
                             crate::history_panel::ContextAction::ReAnalyze { hash: _, image_path } => {
-                                // TODO: Trigger re-analysis via analyze_panel
-                                eprintln!("Re-analyze requested for: {}", image_path);
+                                // Set image path and trigger re-analysis
+                                let path = std::path::PathBuf::from(&image_path);
+                                self.analyze_panel.set_image_for_reanalysis(path);
+                                if !self.analyze_panel.is_analyzing() {
+                                    self.analyze_panel.trigger_analysis(&self.config, &self.store);
+                                }
+                                // Switch to analyze tab
+                                self.current_tab = Tab::Analyze;
                             }
                             _ => {}
                         }
@@ -195,7 +201,7 @@ impl eframe::App for TonsuuApp {
                     self.accuracy_panel.ui(ui, &self.store);
                 }
                 Tab::Settings => {
-                    self.settings_panel.ui(ui, &mut self.config);
+                    self.settings_panel.ui(ui, &mut self.config, &mut self.store);
                 }
             }
         });

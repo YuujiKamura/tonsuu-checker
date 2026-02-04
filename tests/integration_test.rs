@@ -114,7 +114,7 @@ fn test_staged_analysis_with_capacity() {
 
     let config = AnalyzerConfig::default().with_backend("gemini");
     let options = StagedAnalysisOptions::default()
-        .with_max_capacity(10.0)  // 10t truck
+        .with_truck_class(TruckClass::TenTon)  // 10t truck
         .with_ensemble_count(1);
 
     let result = analyze_image_staged(&image_path, &config, &options, &store, None);

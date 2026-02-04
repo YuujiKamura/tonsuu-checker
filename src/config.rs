@@ -1,11 +1,181 @@
 //! Configuration management for tonsuu-checker
 //!
 //! Config stored at: ~/.config/tonsuu-checker/config.json
+//! Truck and material specs stored at: config/trucks.toml and config/materials.toml
 
 use crate::cli::OutputFormat;
+use crate::domain::{MaterialSpec, TruckSpec};
 use crate::error::{ConfigError, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::OnceLock;
+
+/// Truck entry in TOML config
+#[derive(Debug, Clone, Deserialize)]
+pub struct TruckConfigEntry {
+    pub id: String,
+    pub name: String,
+    pub max_capacity: f64,
+    pub bed_length: f64,
+    pub bed_width: f64,
+    pub bed_height: f64,
+    pub level_volume: f64,
+    pub heap_volume: f64,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+}
+
+/// Trucks config file structure
+#[derive(Debug, Clone, Deserialize)]
+pub struct TrucksConfig {
+    pub trucks: Vec<TruckConfigEntry>,
+}
+
+/// Material entry in TOML config
+#[derive(Debug, Clone, Deserialize)]
+pub struct MaterialConfigEntry {
+    pub id: String,
+    pub name: String,
+    pub density: f64,
+    pub void_ratio: f64,
+}
+
+/// Materials config file structure
+#[derive(Debug, Clone, Deserialize)]
+pub struct MaterialsConfig {
+    pub materials: Vec<MaterialConfigEntry>,
+}
+
+/// Loaded truck specs with aliases
+pub struct LoadedTruckSpecs {
+    pub specs: HashMap<String, TruckSpec>,
+    pub aliases: HashMap<String, String>,
+}
+
+/// Loaded material specs
+pub struct LoadedMaterialSpecs {
+    pub specs: HashMap<String, MaterialSpec>,
+}
+
+// Static storage for loaded specs (stores Result to handle errors)
+static LOADED_TRUCK_SPECS: OnceLock<std::result::Result<LoadedTruckSpecs, String>> = OnceLock::new();
+static LOADED_MATERIAL_SPECS: OnceLock<std::result::Result<LoadedMaterialSpecs, String>> = OnceLock::new();
+
+/// Get the config directory path relative to the executable or project root
+fn get_config_dir() -> PathBuf {
+    // Try to find config relative to executable first
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let config_dir = exe_dir.join("config");
+            if config_dir.exists() {
+                return config_dir;
+            }
+            // Also check parent directory (for target/debug layout)
+            if let Some(parent) = exe_dir.parent() {
+                let config_dir = parent.join("config");
+                if config_dir.exists() {
+                    return config_dir;
+                }
+                // Check two levels up (for target/debug/tonsuu-checker layout)
+                if let Some(grandparent) = parent.parent() {
+                    let config_dir = grandparent.join("config");
+                    if config_dir.exists() {
+                        return config_dir;
+                    }
+                }
+            }
+        }
+    }
+
+    // Fall back to current working directory
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("config")
+}
+
+/// Internal function to load truck specs
+fn load_truck_specs_internal() -> std::result::Result<LoadedTruckSpecs, String> {
+    let config_path = get_config_dir().join("trucks.toml");
+    let content = std::fs::read_to_string(&config_path).map_err(|e| {
+        format!(
+            "Failed to read trucks.toml from {}: {}",
+            config_path.display(),
+            e
+        )
+    })?;
+
+    let config: TrucksConfig = toml::from_str(&content)
+        .map_err(|e| format!("Failed to parse trucks.toml: {}", e))?;
+
+    let mut specs = HashMap::new();
+    let mut aliases = HashMap::new();
+
+    for entry in config.trucks {
+        let spec = TruckSpec {
+            name: entry.name,
+            max_capacity: entry.max_capacity,
+            bed_length: entry.bed_length,
+            bed_width: entry.bed_width,
+            bed_height: entry.bed_height,
+            level_volume: entry.level_volume,
+            heap_volume: entry.heap_volume,
+        };
+        specs.insert(entry.id.clone(), spec);
+
+        for alias in entry.aliases {
+            aliases.insert(alias, entry.id.clone());
+        }
+    }
+
+    Ok(LoadedTruckSpecs { specs, aliases })
+}
+
+/// Load truck specs from TOML config file
+pub fn load_truck_specs() -> Result<&'static LoadedTruckSpecs> {
+    let result = LOADED_TRUCK_SPECS.get_or_init(load_truck_specs_internal);
+    match result {
+        Ok(specs) => Ok(specs),
+        Err(e) => Err(ConfigError::ParseError(e.clone()).into()),
+    }
+}
+
+/// Internal function to load material specs
+fn load_material_specs_internal() -> std::result::Result<LoadedMaterialSpecs, String> {
+    let config_path = get_config_dir().join("materials.toml");
+    let content = std::fs::read_to_string(&config_path).map_err(|e| {
+        format!(
+            "Failed to read materials.toml from {}: {}",
+            config_path.display(),
+            e
+        )
+    })?;
+
+    let config: MaterialsConfig = toml::from_str(&content)
+        .map_err(|e| format!("Failed to parse materials.toml: {}", e))?;
+
+    let mut specs = HashMap::new();
+
+    for entry in config.materials {
+        let spec = MaterialSpec {
+            name: entry.name,
+            density: entry.density,
+            void_ratio: entry.void_ratio,
+        };
+        specs.insert(entry.id, spec);
+    }
+
+    Ok(LoadedMaterialSpecs { specs })
+}
+
+/// Load material specs from TOML config file
+pub fn load_material_specs() -> Result<&'static LoadedMaterialSpecs> {
+    let result = LOADED_MATERIAL_SPECS.get_or_init(load_material_specs_internal);
+    match result {
+        Ok(specs) => Ok(specs),
+        Err(e) => Err(ConfigError::ParseError(e.clone()).into()),
+    }
+}
 
 /// Application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

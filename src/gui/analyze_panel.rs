@@ -79,6 +79,30 @@ impl AnalyzePanel {
         }
     }
 
+    /// Set image path for re-analysis (called from history panel)
+    pub fn set_image_for_reanalysis(&mut self, path: PathBuf) {
+        // Check if file exists
+        if !path.exists() {
+            self.error = Some(format!("ファイルが存在しません: {}", path.display()));
+            return;
+        }
+        self.selected_image = Some(path);
+        self.result = None;
+        self.error = None;
+    }
+
+    /// Check if currently analyzing
+    pub fn is_analyzing(&self) -> bool {
+        self.is_analyzing
+    }
+
+    /// Trigger analysis (called externally after setting image)
+    pub fn trigger_analysis(&mut self, config: &Config, store: &Store) {
+        if self.selected_image.is_some() && !self.is_analyzing {
+            self.start_analysis(config, store);
+        }
+    }
+
     /// Render the analyze panel UI
     pub fn ui(&mut self, ui: &mut Ui, config: &Config, store: &mut Store) {
         // Check for status updates from background thread
@@ -518,10 +542,38 @@ fn run_staged_analysis(
 /// Parse AI response into EstimationResult
 fn parse_ai_response(response: &str) -> Result<EstimationResult, String> {
     let json_str = extract_json_from_response(response);
-    serde_json::from_str(&json_str).map_err(|e| {
+    let mut result: EstimationResult = serde_json::from_str(&json_str).map_err(|e| {
         let truncated: String = response.chars().take(500).collect();
         format!("Failed to parse AI response: {}. Response: {}", e, truncated)
-    })
+    })?;
+
+    // Calculate volume and tonnage if not provided by AI
+    if result.estimated_volume_m3 == 0.0 || result.estimated_tonnage == 0.0 {
+        calculate_volume_and_tonnage(&mut result);
+    }
+
+    Ok(result)
+}
+
+/// Calculate volume and tonnage from estimated parameters
+fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
+    const LOWER_AREA: f64 = 6.8; // 4tダンプ底面積 (m²)
+
+    let density = match result.material_type.as_str() {
+        s if s.contains("土砂") => 1.8,
+        _ => 2.5,
+    };
+
+    let upper_area = result.upper_area.unwrap_or(LOWER_AREA);
+    let height = result.height.unwrap_or(0.0);
+    let void_ratio = result.void_ratio.unwrap_or(0.35);
+
+    if height > 0.0 {
+        let volume = (upper_area + LOWER_AREA) / 2.0 * height;
+        let tonnage = volume * density * (1.0 - void_ratio);
+        result.estimated_volume_m3 = (volume * 100.0).round() / 100.0;
+        result.estimated_tonnage = (tonnage * 100.0).round() / 100.0;
+    }
 }
 
 /// Extract JSON from response (handles markdown code blocks)

@@ -8,7 +8,6 @@ use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-pub use vehicles::{scan_vehicle_folder, FolderScanResult, VehicleFolderScan};
 
 /// Supported image extensions
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "gif", "bmp"];

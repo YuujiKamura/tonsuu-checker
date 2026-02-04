@@ -1,0 +1,27 @@
+# Vehicle master data
+# Contains vehicle numbers, max capacity, and transport company information
+
+[[vehicles]]
+vehicle_number = "1122"
+max_capacity_tons = 3.75
+transport_company = "松尾運搬社"
+
+[[vehicles]]
+vehicle_number = "1111"
+max_capacity_tons = 3.5
+transport_company = "松尾運搬社"
+
+[[vehicles]]
+vehicle_number = "1177"
+max_capacity_tons = 3.75
+transport_company = "松尾運搬社"
+
+[[vehicles]]
+vehicle_number = "8267"
+max_capacity_tons = 3.75
+transport_company = "宮建"
+
+[[vehicles]]
+vehicle_number = "4397"
+max_capacity_tons = 0.0
+transport_company = "三雄建設"

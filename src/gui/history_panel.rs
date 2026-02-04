@@ -5,6 +5,7 @@ use tonsuu_checker::store::{Store, VehicleStore};
 
 /// Context menu action to be executed
 #[derive(Clone)]
+#[allow(dead_code)]
 pub enum ContextAction {
     /// Re-analyze the selected entry
     ReAnalyze { hash: String, image_path: String },

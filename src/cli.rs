@@ -237,4 +237,19 @@ pub enum Commands {
 
     /// Check AI backend status and rate limits
     Stats,
+
+    /// Check for overloaded vehicles by comparing weighing slips with vehicle master
+    CheckOverload {
+        /// Path to CSV file containing weighing slips
+        #[arg(long)]
+        csv: PathBuf,
+
+        /// Path to CSV file containing vehicle master data
+        #[arg(long)]
+        vehicles: PathBuf,
+
+        /// Output format (json for machine-readable, table for human-readable)
+        #[arg(long, short = 'o')]
+        output: Option<OutputFormat>,
+    },
 }

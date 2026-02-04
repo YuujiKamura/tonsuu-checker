@@ -1,8 +1,9 @@
 //! Command handlers
 
 use crate::analyzer::cache::Cache;
-use crate::analyzer::{analyze_image, analyze_image_ensemble, AnalyzerConfig};
-use cli_ai_analyzer::{check_gemini_status, Backend};
+use crate::analyzer::{analyze_image, AnalyzerConfig};
+use crate::app::{self, AnalysisOptions};
+use cli_ai_analyzer::check_gemini_status;
 use crate::cli::{Cli, Commands, OutputFormat};
 use crate::config::Config;
 use crate::constants::get_truck_spec;
@@ -11,7 +12,10 @@ use crate::export::export_to_excel;
 use crate::output::output_result;
 use crate::scanner::{scan_directory, validate_image};
 use crate::store::{HistoryEntry, Store, VehicleStore};
-use crate::types::{AnalysisEntry, BatchResults, EstimationResult, LoadGrade, RegisteredVehicle};
+use crate::domain::service::{
+    check_overloads, generate_overload_report, load_slips_from_csv, load_vehicles_from_csv,
+};
+use crate::types::{AnalysisEntry, BatchResults, EstimationResult, LoadGrade, RegisteredVehicle, TruckClass};
 use chrono::Utc;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use serde::Deserialize;
@@ -39,10 +43,12 @@ impl AnalysisProfiler {
         }
     }
 
+    #[allow(dead_code)]
     fn record_yolo(&mut self, start: Instant) {
         self.yolo_ms = Some(start.elapsed().as_millis() as u64);
     }
 
+    #[allow(dead_code)]
     fn record_api(&mut self, start: Instant) {
         self.api_ms = Some(start.elapsed().as_millis() as u64);
     }
@@ -80,6 +86,7 @@ impl AnalysisProfiler {
 }
 
 /// Result from Gemini plate OCR
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct PlateOcrResult {
     plate: Option<String>,
@@ -87,6 +94,7 @@ struct PlateOcrResult {
 }
 
 /// Build a simple OCR prompt for cropped plate image
+#[allow(dead_code)]
 fn build_plate_ocr_prompt(vehicle_store: &VehicleStore) -> String {
     let mut prompt = String::from(
 r#"この画像は日本の自動車ナンバープレートです。プレートに書かれている文字を正確に読み取ってください。
@@ -230,6 +238,12 @@ pub fn execute(cli: Cli) -> Result<()> {
         Commands::Import { file, dry_run } => cmd_import(&config, file.clone(), *dry_run),
 
         Commands::Stats => cmd_stats(&cli),
+
+        Commands::CheckOverload {
+            csv,
+            vehicles,
+            output,
+        } => cmd_check_overload(csv.clone(), vehicles.clone(), output.unwrap_or(OutputFormat::Table)),
     }
 }
 
@@ -244,284 +258,71 @@ fn cmd_analyze(
     skip_yolo_class_only: Option<String>,
     filter_company: Option<String>,
 ) -> Result<()> {
-    use crate::analyzer::{analyze_image_staged, StagedAnalysisOptions};
-    use crate::store::VehicleStore;
-    use crate::types::TruckClass;
-
-    // Validate image
-    validate_image(&image)?;
-
-    // Setup analyzer config
-    let analyzer_config = AnalyzerConfig::default()
-        .with_backend(&config.backend)
-        .with_model(config.model.clone());
-
-    // Initialize cache once if enabled
-    let cache = if use_cache {
-        Some(Cache::new(config.cache_dir()?)?)
-    } else {
-        None
-    };
-
-    // Initialize stores
-    let store = Store::open(config.store_dir()?)?;
-    let vehicle_store = VehicleStore::open(config.store_dir()?)?;
-
     // Initialize profiler
     let mut profiler = AnalysisProfiler::new();
 
-    // Parse skip_yolo_class_only to get TruckClass and max_capacity for reference
-    let (skip_yolo_truck_class, skip_yolo_max_capacity): (Option<TruckClass>, Option<f64>) =
+    // Parse skip_yolo_class_only to get TruckClass
+    let truck_class_override: Option<TruckClass> =
         if let Some(ref class_name) = skip_yolo_class_only {
-            let (truck_class, max_cap) = match class_name.as_str() {
-                "2t" => (TruckClass::TwoTon, 2.0),
-                "4t" => (TruckClass::FourTon, 4.0),
-                "増トン" => (TruckClass::IncreasedTon, 6.5),
-                "10t" => (TruckClass::TenTon, 10.0),
+            let truck_class = match class_name.as_str() {
+                "2t" => TruckClass::TwoTon,
+                "4t" => TruckClass::FourTon,
+                "増トン" => TruckClass::IncreasedTon,
+                "10t" => TruckClass::TenTon,
                 _ => {
                     eprintln!("警告: 不明なクラス名 '{}' (2t, 4t, 増トン, 10t のいずれかを指定)", class_name);
-                    (TruckClass::Unknown, 0.0)
+                    TruckClass::Unknown
                 }
             };
-            (Some(truck_class), Some(max_cap))
+            Some(truck_class)
         } else {
-            (None, None)
+            None
         };
 
-    // Check cache first (only if no manual overrides)
-    if manual_plate.is_none() && skip_yolo_class_only.is_none() {
-        if let Some(ref cache) = cache {
-            if let Ok(Some(cached)) = cache.get(&image) {
-                if cli.verbose {
-                    eprintln!("Using cached result");
-                }
-                profiler.cache_hit = true;
-                output_result(output_format, &cached, None)?;
-                profiler.print_summary();
-                return Ok(());
-            }
-        }
+    // Build analysis options using the app layer
+    let mut options = AnalysisOptions::new()
+        .with_cache(use_cache)
+        .with_ensemble_count(ensemble)
+        .with_verbose(cli.verbose);
+
+    if let Some(plate) = manual_plate {
+        options = options.with_manual_plate(plate);
     }
+
+    if let Some(class) = truck_class_override {
+        options = options.with_truck_class(class);
+    }
+
+    if let Some(company) = filter_company {
+        options = options.with_company_filter(company);
+    }
+
+    // Create progress callback for verbose mode
+    let progress_cb = if cli.verbose {
+        Some(Box::new(|msg: &str| eprintln!("  {}", msg)) as crate::analyzer::ProgressCallback)
+    } else {
+        None
+    };
 
     if cli.verbose {
         eprintln!("Analyzing image: {}", image.display());
     }
 
-    // === Try to match with registered vehicles ===
-    let mut matched_vehicle: Option<&crate::types::RegisteredVehicle> = None;
+    // Delegate to app layer
+    let analysis_start = Instant::now();
+    let result = app::analyze_truck_image(&image, config, &options, progress_cb)
+        .map_err(|e: app::AnalysisServiceError| Error::AnalysisFailed(e.to_string()))?;
+    profiler.record_stage2(analysis_start);
 
-    // If manual plate specified, try to match first
-    if let Some(ref plate) = manual_plate {
+    if result.from_cache {
+        profiler.cache_hit = true;
         if cli.verbose {
-            eprintln!("指定ナンバー: {}", plate);
-        }
-        matched_vehicle = find_vehicle_by_plate(&vehicle_store, plate);
-    }
-
-    // If no manual plate or not matched, try local YOLO plate detection + combined API call
-    let mut yolo_combined_result: Option<EstimationResult> = None;
-    if matched_vehicle.is_none() && skip_yolo_class_only.is_none() && config.plate_local_enabled {
-        if cli.verbose {
-            eprintln!("YOLO ナンバープレート検出中...");
-        }
-        let yolo_start = Instant::now();
-        if let Ok(Some((crop_path, conf))) = crate::plate_local::detect_plate_yolo(&image, config, cli.verbose) {
-            profiler.record_yolo(yolo_start);
-            if cli.verbose {
-                eprintln!("YOLO検出成功 (conf {:.1}%) - 統合解析実行中...", conf * 100.0);
-            }
-
-            // Build combined prompt with vehicle list (filtered by company if specified)
-            let vehicles: Vec<crate::constants::prompts::RegisteredVehicleInfo> = vehicle_store
-                .all_vehicles()
-                .iter()
-                .filter(|v| {
-                    // Filter by company if specified
-                    match (&filter_company, &v.company) {
-                        (Some(filter), Some(company)) => company.contains(filter.as_str()),
-                        (Some(_), None) => false,
-                        (None, _) => true,
-                    }
-                })
-                .filter_map(|v| {
-                    v.license_plate.as_ref().map(|plate| crate::constants::prompts::RegisteredVehicleInfo {
-                        license_plate: plate.clone(),
-                        name: v.name.clone(),
-                        max_capacity: v.max_capacity,
-                    })
-                })
-                .collect();
-
-            if cli.verbose && filter_company.is_some() {
-                eprintln!("会社フィルタ: {} ({} 台)", filter_company.as_ref().unwrap(), vehicles.len());
-            }
-
-            // Collect registered vehicle photos for visual matching (filtered by company)
-            let mut vehicle_photos: Vec<(String, PathBuf)> = Vec::new();
-            for v in vehicle_store.all_vehicles() {
-                // Filter by company
-                let company_match = match (&filter_company, &v.company) {
-                    (Some(filter), Some(company)) => company.contains(filter.as_str()),
-                    (Some(_), None) => false,
-                    (None, _) => true,
-                };
-                if !company_match {
-                    continue;
-                }
-                if let Some(ref img_path) = v.image_path {
-                    let p = PathBuf::from(img_path);
-                    if p.exists() {
-                        let plate = v.license_plate.clone().unwrap_or_default();
-                        vehicle_photos.push((plate, p));
-                    }
-                }
-            }
-
-            let prompt = crate::constants::prompts::build_combined_analysis_prompt_with_refs(&vehicles, &vehicle_photos);
-
-            // Send images: 1=crop, 2=full, 3+=registered vehicle photos
-            let mut image_files = vec![crop_path.clone(), image.clone()];
-            for (_, photo_path) in &vehicle_photos {
-                image_files.push(photo_path.clone());
-            }
-
-            let mut ai_options = if let Some(ref model) = config.model {
-                cli_ai_analyzer::AnalyzeOptions::with_model(model)
-            } else {
-                cli_ai_analyzer::AnalyzeOptions::default()
-            };
-            ai_options = ai_options.with_backend(analyzer_config.backend).json();
-
-            let api_start = Instant::now();
-            match cli_ai_analyzer::analyze(&prompt, &image_files, ai_options) {
-                Ok(response) => {
-                    profiler.record_api(api_start);
-                    let json_str = crate::analyzer::extract_json_from_response(&response);
-                    match serde_json::from_str::<EstimationResult>(&json_str) {
-                        Ok(result) => {
-                            if cli.verbose {
-                                if let Some(ref plate) = result.license_plate {
-                                    eprintln!("検出ナンバー: {}", plate);
-                                    // Also update matched_vehicle for display
-                                    matched_vehicle = find_vehicle_by_plate(&vehicle_store, plate);
-                                }
-                            }
-                            yolo_combined_result = Some(result);
-                        }
-                        Err(e) => {
-                            if cli.verbose {
-                                eprintln!("JSON parse error: {} - falling back", e);
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    profiler.record_api(api_start);
-                    if cli.verbose {
-                        eprintln!("API error: {} - falling back", e);
-                    }
-                }
-            }
-
-            // Cleanup crop file
-            crate::plate_local::cleanup_crop(&crop_path);
+            eprintln!("Using cached result");
         }
     }
 
-    // If combined analysis succeeded, use that result directly
-    if let Some(result) = yolo_combined_result {
-        // Update max_capacity from matched vehicle if found
-        if let Some(vehicle) = matched_vehicle {
-            if cli.verbose {
-                eprintln!(
-                    "登録車両と照合: {} ({}t) - {}",
-                    vehicle.name,
-                    vehicle.max_capacity,
-                    vehicle.license_plate.as_deref().unwrap_or("N/A")
-                );
-                eprintln!("\n=== 登録車両情報 ===");
-                eprintln!("車両名:     {}", vehicle.name);
-                eprintln!("最大積載量: {}t", vehicle.max_capacity);
-                eprintln!(
-                    "ナンバー:   {}",
-                    vehicle.license_plate.as_deref().unwrap_or("N/A")
-                );
-                eprintln!(
-                    "クラス:     {}",
-                    crate::types::TruckClass::from_capacity(vehicle.max_capacity).label()
-                );
-            }
-        }
-
-        // Save to history
-        let mut store_mut = store;
-        store_mut.add_analysis_with_capacity(
-            &image,
-            result.clone(),
-            matched_vehicle.map(|v| v.max_capacity),
-            None,
-        )?;
-
-        // Cache result
-        if let Some(ref cache) = cache {
-            let _ = cache.set(&image, &result);
-        }
-
-        output_result(output_format, &result, matched_vehicle.as_ref().map(|v| v.max_capacity))?;
-        profiler.print_summary();
-        return Ok(());
-    }
-
-    // If still not matched (or local disabled), run API Stage 1 for auto-detection
-    if matched_vehicle.is_none() && skip_yolo_class_only.is_none() && config.plate_local_fallback_api {
-        if cli.verbose {
-            eprintln!("Stage 1: ナンバープレート検出中...");
-        }
-        // Build prompt with registered vehicle list
-        let vehicles: Vec<crate::constants::prompts::RegisteredVehicleInfo> = vehicle_store
-            .all_vehicles()
-            .iter()
-            .filter_map(|v| {
-                v.license_plate.as_ref().map(|plate| crate::constants::prompts::RegisteredVehicleInfo {
-                    license_plate: plate.clone(),
-                    name: v.name.clone(),
-                    max_capacity: v.max_capacity,
-                })
-            })
-            .collect();
-
-        let prompt = crate::constants::prompts::build_analysis_prompt_with_vehicles(&vehicles);
-
-        // Collect image files: target image + registered vehicle photos
-        let mut image_files = vec![image.clone()];
-        for v in vehicle_store.all_vehicles() {
-            if let Some(ref img_path) = v.image_path {
-                let p = PathBuf::from(img_path);
-                if p.exists() {
-                    image_files.push(p);
-                }
-            }
-        }
-
-        let mut ai_options = if let Some(ref model) = config.model {
-            cli_ai_analyzer::AnalyzeOptions::with_model(model)
-        } else {
-            cli_ai_analyzer::AnalyzeOptions::default()
-        };
-        ai_options = ai_options.with_backend(analyzer_config.backend).json();
-        let response = cli_ai_analyzer::analyze(&prompt, &image_files, ai_options)?;
-        let stage1_result: crate::types::EstimationResult = serde_json::from_str(&crate::analyzer::extract_json_from_response(&response))?;
-
-        if let Some(ref plate) = stage1_result.license_plate {
-            if cli.verbose {
-                eprintln!("検出ナンバー: {}", plate);
-            }
-            matched_vehicle = find_vehicle_by_plate(&vehicle_store, plate);
-        }
-    }
-
-    // If matched, log vehicle info
-    if let Some(vehicle) = matched_vehicle {
+    // Output vehicle info if matched
+    if let Some(ref vehicle) = result.matched_vehicle {
         if cli.verbose {
             eprintln!(
                 "登録車両と照合: {} ({}t) - {}",
@@ -530,63 +331,32 @@ fn cmd_analyze(
                 vehicle.license_plate.as_deref().unwrap_or("N/A")
             );
         }
-    } else if cli.verbose {
-        if let Some(ref class_name) = skip_yolo_class_only {
-            eprintln!("クラス指定: {} (参照用積載量: {}t、YOLO車両特定スキップ、積載率計算なし)",
-                class_name, skip_yolo_max_capacity.unwrap_or(0.0));
-        } else {
-            eprintln!("登録車両との照合: 該当なし");
-        }
-    }
-
-    // === STAGE 2: Staged analysis with truck_class and graded reference ===
-    // Determine truck_class: from matched vehicle or from skip_yolo_class_only
-    let truck_class_for_analysis = if let Some(vehicle) = matched_vehicle {
-        Some(TruckClass::from_capacity(vehicle.max_capacity))
-    } else {
-        skip_yolo_truck_class
-    };
-
-    if cli.verbose {
-        eprintln!("Stage 2: 段階解析中...");
-        if let Some(ref tc) = truck_class_for_analysis {
-            eprintln!("  対象クラス: {}", tc.label());
-        }
-    }
-
-    let staged_options = StagedAnalysisOptions {
-        truck_class: truck_class_for_analysis,
-        ensemble_count: ensemble.max(1),
-    };
-
-    let progress_cb = if cli.verbose {
-        Some(Box::new(|msg: &str| eprintln!("  {}", msg)) as crate::analyzer::ProgressCallback)
-    } else {
-        None
-    };
-
-    let stage2_start = Instant::now();
-    let mut result = analyze_image_staged(&image, &analyzer_config, &staged_options, &store, progress_cb)?;
-    profiler.record_stage2(stage2_start);
-
-    // Cache result
-    if let Some(ref cache) = cache {
-        let _ = cache.set(&image, &result);
-    }
-
-    // Output result with vehicle info
-    if let Some(vehicle) = matched_vehicle {
         println!("\n=== 登録車両情報 ===");
         println!("車両名:     {}", vehicle.name);
         println!("最大積載量: {}t", vehicle.max_capacity);
         println!("ナンバー:   {}", vehicle.license_plate.as_deref().unwrap_or("-"));
         println!("クラス:     {}", vehicle.truck_class().label());
+    } else if cli.verbose {
+        if let Some(ref class_name) = skip_yolo_class_only {
+            let max_cap = match class_name.as_str() {
+                "2t" => 2.0,
+                "4t" => 4.0,
+                "増トン" => 6.5,
+                "10t" => 10.0,
+                _ => 0.0,
+            };
+            eprintln!("クラス指定: {} (参照用積載量: {}t、YOLO車両特定スキップ、積載率計算なし)",
+                class_name, max_cap);
+        } else {
+            eprintln!("登録車両との照合: 該当なし");
+        }
     }
 
+    // Output result
     // For skip_yolo_class_only mode, don't pass max_capacity (no load ratio calculation)
     // For matched vehicle, pass vehicle's max_capacity
-    let output_capacity = matched_vehicle.map(|v| v.max_capacity);
-    output_result(output_format, &result, output_capacity)?;
+    let output_capacity = result.matched_vehicle.as_ref().map(|v| v.max_capacity);
+    output_result(output_format, &result.estimation, output_capacity)?;
     profiler.print_summary();
 
     Ok(())
@@ -1163,6 +933,7 @@ fn truncate(s: &str, max_len: usize) -> String {
 }
 
 /// Find vehicle by license plate with fuzzy matching
+#[allow(dead_code)]
 fn find_vehicle_by_plate<'a>(
     vehicle_store: &'a crate::store::VehicleStore,
     plate: &str,
@@ -1404,6 +1175,7 @@ fn cmd_auto_collect(
 #[derive(Debug, Clone)]
 struct VehicleFolderInfo {
     folder_name: String,
+    #[allow(dead_code)]
     folder_path: PathBuf,
     shaken_files: Vec<PathBuf>,
     photo_files: Vec<PathBuf>,
@@ -1684,6 +1456,7 @@ struct BackupStockEntry {
 }
 
 /// Backup estimation from TonSuuChecker app
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BackupEstimation {
@@ -1878,6 +1651,58 @@ fn cmd_stats(cli: &Cli) -> Result<()> {
         _ => {
             println!("Unknown backend: {}", backend);
         }
+    }
+
+    Ok(())
+}
+
+/// Check for overloaded vehicles
+fn cmd_check_overload(csv_path: PathBuf, vehicles_path: PathBuf, output_format: OutputFormat) -> Result<()> {
+    // Validate file paths
+    if !csv_path.exists() {
+        return Err(Error::FileNotFound(format!(
+            "CSV file not found: {}",
+            csv_path.display()
+        )));
+    }
+    if !vehicles_path.exists() {
+        return Err(Error::FileNotFound(format!(
+            "Vehicles file not found: {}",
+            vehicles_path.display()
+        )));
+    }
+
+    // Load data
+    println!("Loading weighing slips from: {}", csv_path.display());
+    let slips = load_slips_from_csv(&csv_path)
+        .map_err(|e| Error::AnalysisFailed(format!("Failed to load slips: {}", e)))?;
+    println!("  Loaded {} slips", slips.len());
+
+    println!("Loading vehicle master from: {}", vehicles_path.display());
+    let vehicles = load_vehicles_from_csv(&vehicles_path)
+        .map_err(|e| Error::AnalysisFailed(format!("Failed to load vehicles: {}", e)))?;
+    println!("  Loaded {} vehicles", vehicles.len());
+
+    // Run overload check
+    println!("\nChecking for overloads...\n");
+    let results = check_overloads(&slips, &vehicles);
+
+    // Output results
+    match output_format {
+        OutputFormat::Json => {
+            let json = serde_json::to_string_pretty(&results)?;
+            println!("{}", json);
+        }
+        OutputFormat::Table => {
+            let report = generate_overload_report(&results);
+            println!("{}", report);
+        }
+    }
+
+    // Return success or error based on overload count
+    let overload_count = results.iter().filter(|r| r.is_overloaded).count();
+    if overload_count > 0 {
+        eprintln!("\n警告: {}件の過積載が検出されました", overload_count);
     }
 
     Ok(())

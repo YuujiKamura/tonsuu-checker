@@ -6,3 +6,26 @@ tests/fixtures/
 *.png
 *.pt
 *.pdf
+# Local assistant/tooling directories
+/.agent/
+/.amazonq/
+/.augment/
+/.claude/
+/.cline/
+/.clinerules/
+/.codebuddy/
+/.codex/
+/.continue/
+/.cospec/
+/.crush/
+/.cursor/
+/.factory/
+/.gemini/
+/.iflow/
+/.kilocode/
+/.opencode/
+/.qoder/
+/.qwen/
+/.roo/
+/.trae/
+/.windsurf/

@@ -47,6 +47,7 @@ impl VehicleStore {
     }
 
     /// Remove a vehicle by ID
+    #[allow(dead_code)]
     pub fn remove_vehicle(&mut self, id: &str) -> Result<bool> {
         let removed = self.vehicles.remove(id).is_some();
         if removed {
@@ -56,6 +57,7 @@ impl VehicleStore {
     }
 
     /// Get a vehicle by ID
+    #[allow(dead_code)]
     pub fn get_vehicle(&self, id: &str) -> Option<&RegisteredVehicle> {
         self.vehicles.get(id)
     }
@@ -78,6 +80,7 @@ impl VehicleStore {
     }
 
     /// Get vehicles by truck class
+    #[allow(dead_code)]
     pub fn vehicles_by_class(&self, class: TruckClass) -> Vec<&RegisteredVehicle> {
         self.vehicles
             .values()
@@ -91,6 +94,7 @@ impl VehicleStore {
     }
 
     /// Update a vehicle
+    #[allow(dead_code)]
     pub fn update_vehicle(&mut self, vehicle: RegisteredVehicle) -> Result<bool> {
         if self.vehicles.contains_key(&vehicle.id) {
             self.vehicles.insert(vehicle.id.clone(), vehicle);

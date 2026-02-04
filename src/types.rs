@@ -206,35 +206,7 @@ impl Default for EstimationResult {
     }
 }
 
-/// Truck specification
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TruckSpec {
-    /// Display name
-    pub name: String,
-    /// Maximum payload capacity in tonnes
-    pub max_capacity: f64,
-    /// Cargo bed length in meters
-    pub bed_length: f64,
-    /// Cargo bed width in meters
-    pub bed_width: f64,
-    /// Cargo bed height (side wall) in meters
-    pub bed_height: f64,
-    /// Level (flush) volume in m³
-    pub level_volume: f64,
-    /// Heaped volume in m³
-    pub heap_volume: f64,
-}
-
-/// Material properties
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MaterialSpec {
-    /// Display name
-    pub name: String,
-    /// Density in t/m³
-    pub density: f64,
-    /// Void ratio (0.0 - 1.0)
-    pub void_ratio: f64,
-}
+// Re-export domain types for backwards compatibility
 
 /// Load grade classification
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

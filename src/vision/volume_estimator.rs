@@ -1,4 +1,4 @@
-//! 車検証 (Vehicle Registration Certificate) analyzer
+//! Vehicle registration certificate (shaken) analyzer and volume estimation
 //!
 //! Analyzes vehicle registration certificate images to extract:
 //! - Vehicle name (車名)
@@ -6,13 +6,13 @@
 //! - Registration number (登録番号)
 
 use crate::error::{Error, Result};
+use crate::vision::AnalyzerConfig;
 use cli_ai_analyzer::{analyze, AnalyzeOptions};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use super::AnalyzerConfig;
-
 /// Result of 車検証 (vehicle registration certificate) analysis
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShakenResult {
@@ -26,6 +26,7 @@ pub struct ShakenResult {
 }
 
 /// Build the prompt for 車検証 analysis
+#[allow(dead_code)]
 fn build_shaken_prompt() -> String {
     r#"あなたは車検証（自動車検査証）を読み取る専門家です。
 提供された車検証の画像から以下の情報を正確に読み取ってください。
@@ -67,6 +68,7 @@ fn build_shaken_prompt() -> String {
 }
 
 /// Extract JSON from AI response (handles markdown code blocks)
+#[allow(dead_code)]
 fn extract_json(response: &str) -> String {
     let response = response.trim();
 
@@ -122,7 +124,7 @@ fn extract_json(response: &str) -> String {
 ///
 /// ```no_run
 /// use std::path::Path;
-/// use tonsuu_checker::analyzer::{AnalyzerConfig, shaken::analyze_shaken};
+/// use tonsuu_checker::vision::{AnalyzerConfig, analyze_shaken};
 ///
 /// let config = AnalyzerConfig::default();
 /// let result = analyze_shaken(Path::new("shaken.jpg"), &config)?;
@@ -130,6 +132,7 @@ fn extract_json(response: &str) -> String {
 /// println!("Max capacity: {} tonnes", result.max_capacity);
 /// # Ok::<(), tonsuu_checker::error::Error>(())
 /// ```
+#[allow(dead_code)]
 pub fn analyze_shaken(image_path: &Path, config: &AnalyzerConfig) -> Result<ShakenResult> {
     // Build the prompt
     let prompt = build_shaken_prompt();
@@ -151,6 +154,7 @@ pub fn analyze_shaken(image_path: &Path, config: &AnalyzerConfig) -> Result<Shak
 }
 
 /// Parse AI response into ShakenResult
+#[allow(dead_code)]
 fn parse_shaken_response(response: &str) -> Result<ShakenResult> {
     // Extract JSON from response (may have markdown code blocks)
     let json_str = extract_json(response);

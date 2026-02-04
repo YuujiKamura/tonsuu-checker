@@ -1,0 +1,46 @@
+# Truck specifications for Japanese dump trucks
+# Each truck type has specifications and optional aliases for flexible input matching
+
+[[trucks]]
+id = "2t"
+name = "2tダンプ"
+max_capacity = 2.0
+bed_length = 3.0
+bed_width = 1.6
+bed_height = 0.32
+level_volume = 1.5
+heap_volume = 2.0
+aliases = ["2トン", "2トンダンプ", "2t ダンプ", "2tダンプ"]
+
+[[trucks]]
+id = "4t"
+name = "4tダンプ"
+max_capacity = 4.0
+bed_length = 3.4
+bed_width = 2.06
+bed_height = 0.34
+level_volume = 2.0
+heap_volume = 2.4
+aliases = ["4トン", "4トンダンプ", "4t ダンプ", "4tダンプ"]
+
+[[trucks]]
+id = "増トン"
+name = "増トンダンプ"
+max_capacity = 6.5
+bed_length = 4.0
+bed_width = 2.2
+bed_height = 0.40
+level_volume = 3.5
+heap_volume = 4.5
+aliases = ["増トンダンプ", "増t", "増"]
+
+[[trucks]]
+id = "10t"
+name = "10tダンプ"
+max_capacity = 10.0
+bed_length = 5.3
+bed_width = 2.3
+bed_height = 0.50
+level_volume = 6.0
+heap_volume = 7.8
+aliases = ["10トン", "10トンダンプ", "10t ダンプ", "10tダンプ"]

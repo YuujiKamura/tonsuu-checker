@@ -50,6 +50,9 @@ pub enum Error {
     #[error("Cache error: {0}")]
     Cache(#[from] CacheError),
 
+    #[error("CSV loader error: {0}")]
+    CsvLoader(String),
+
     #[error("File not found: {0}")]
     FileNotFound(String),
 
