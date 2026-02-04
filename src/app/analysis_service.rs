@@ -78,6 +78,9 @@ pub struct AnalysisOptions {
 
     /// Truck type pre-info (e.g., "4tダンプ", "10tダンプ")
     pub truck_type_hint: Option<String>,
+
+    /// Karte JSON (known values; null means estimate)
+    pub karte_json: Option<String>,
 }
 
 impl AnalysisOptions {
@@ -126,6 +129,11 @@ impl AnalysisOptions {
 
     pub fn with_truck_type_hint(mut self, truck_type: String) -> Self {
         self.truck_type_hint = Some(truck_type);
+        self
+    }
+
+    pub fn with_karte_json(mut self, karte_json: String) -> Self {
+        self.karte_json = Some(karte_json);
         self
     }
 }
@@ -242,6 +250,7 @@ pub fn analyze_truck_image(
         ensemble_count: options.ensemble_count.max(1),
         truck_type_hint: options.truck_type_hint.clone(),
         material_type: options.material_type.clone(),
+        karte_json: options.karte_json.clone(),
     };
 
     let estimation = analyze_image_staged(image_path, &analyzer_config, &staged_options, &store, progress)?;

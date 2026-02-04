@@ -15,6 +15,7 @@ pub mod volume_estimator;
 pub use ai::prompts::{
     build_analysis_prompt,
     build_estimation_prompt,
+    build_karte_prompt,
     build_staged_analysis_prompt, GradedReferenceItem,
 };
 pub use cache::Cache;
@@ -91,6 +92,8 @@ pub struct StagedAnalysisOptions {
     pub truck_type_hint: Option<String>,
     /// Material type pre-info (e.g., "As殻", "Co殻", "土砂")
     pub material_type: Option<String>,
+    /// Karte JSON (known values; null means estimate)
+    pub karte_json: Option<String>,
 }
 
 impl Default for StagedAnalysisOptions {
@@ -100,6 +103,7 @@ impl Default for StagedAnalysisOptions {
             ensemble_count: 1,
             truck_type_hint: None,
             material_type: None,
+            karte_json: None,
         }
     }
 }
@@ -126,6 +130,12 @@ impl StagedAnalysisOptions {
     #[allow(dead_code)]
     pub fn with_material_type(mut self, material_type: String) -> Self {
         self.material_type = Some(material_type);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_karte_json(mut self, karte_json: String) -> Self {
+        self.karte_json = Some(karte_json);
         self
     }
 }
@@ -171,7 +181,9 @@ pub fn analyze_image_staged(
         notify(&format!("推論 {}/{} 実行中...", iteration + 1, target_count));
 
         // Build prompt based on available data
-        let prompt = if let (Some(truck_type), Some(material_type)) = (&options.truck_type_hint, &options.material_type) {
+        let prompt = if let Some(karte_json) = &options.karte_json {
+            build_karte_prompt(karte_json)
+        } else if let (Some(truck_type), Some(material_type)) = (&options.truck_type_hint, &options.material_type) {
             // Use pre-filled prompt when both truck_type and material_type are provided
             build_estimation_prompt(truck_type, material_type)
         } else if !graded_stock.is_empty() {

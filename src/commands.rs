@@ -15,7 +15,7 @@ use crate::store::{HistoryEntry, Store, VehicleStore};
 use crate::domain::service::{
     check_overloads, generate_overload_report, load_slips_from_csv, load_vehicles_from_csv,
 };
-use crate::types::{AnalysisEntry, BatchResults, EstimationResult, LoadGrade, RegisteredVehicle, TruckClass};
+use crate::types::{AnalysisEntry, BatchResults, EstimationResult, KarteInput, LoadGrade, RegisteredVehicle, TruckClass};
 use chrono::Utc;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use serde::Deserialize;
@@ -153,6 +153,7 @@ pub fn execute(cli: Cli) -> Result<()> {
             plate,
             skip_yolo_class_only,
             company,
+            karte,
             material,
             truck_class,
         } => {
@@ -161,7 +162,20 @@ pub fn execute(cli: Cli) -> Result<()> {
             // Cache disabled if: --no-cache OR config.cache_enabled=false
             let use_cache = !no_cache && config.cache_enabled;
             let output_format = cli.format.unwrap_or(config.output_format);
-            cmd_analyze(&cli, &config, image.clone(), use_cache, ensemble_count, output_format, plate.clone(), skip_yolo_class_only.clone(), company.clone(), material.clone(), truck_class.clone())
+            cmd_analyze(
+                &cli,
+                &config,
+                image.clone(),
+                use_cache,
+                ensemble_count,
+                output_format,
+                plate.clone(),
+                skip_yolo_class_only.clone(),
+                company.clone(),
+                karte.clone(),
+                material.clone(),
+                truck_class.clone(),
+            )
         }
 
         Commands::Batch {
@@ -259,6 +273,7 @@ fn cmd_analyze(
     manual_plate: Option<String>,
     skip_yolo_class_only: Option<String>,
     filter_company: Option<String>,
+    karte_arg: Option<String>,
     material_type: Option<String>,
     truck_type_hint: Option<String>,
 ) -> Result<()> {
@@ -283,11 +298,30 @@ fn cmd_analyze(
             None
         };
 
+    // Enforce karte-only input
+    if material_type.is_some() || truck_type_hint.is_some() {
+        return Err(Error::AnalysisFailed(
+            "競合する引数: --material/--truck-class は廃止。--karte を使用してください。"
+                .to_string(),
+        ));
+    }
+
+    let karte_json = match karte_arg {
+        Some(arg) => parse_karte_arg(&arg)?,
+        None => {
+            return Err(Error::AnalysisFailed(
+                "--karte が必須です。Karte JSON（文字列またはファイル）を指定してください。"
+                    .to_string(),
+            ))
+        }
+    };
+
     // Build analysis options using the app layer
     let mut options = AnalysisOptions::new()
         .with_cache(use_cache)
         .with_ensemble_count(ensemble)
-        .with_verbose(cli.verbose);
+        .with_verbose(cli.verbose)
+        .with_karte_json(karte_json);
 
     if let Some(plate) = manual_plate {
         options = options.with_manual_plate(plate);
@@ -372,6 +406,19 @@ fn cmd_analyze(
     profiler.print_summary();
 
     Ok(())
+}
+
+fn parse_karte_arg(arg: &str) -> Result<String> {
+    let path = PathBuf::from(arg);
+    let raw = if path.exists() {
+        std::fs::read_to_string(&path).map_err(Error::Io)?
+    } else {
+        arg.to_string()
+    };
+
+    let _karte: KarteInput = serde_json::from_str(&raw).map_err(Error::Json)?;
+    // Normalize JSON to ensure valid formatting
+    serde_json::to_string(&_karte).map_err(Error::Json)
 }
 
 /// Result from a single analysis task

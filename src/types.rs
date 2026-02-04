@@ -117,6 +117,32 @@ pub struct MaterialBreakdown {
     pub density: f64,
 }
 
+/// Karte input for analysis (known values; null means "estimate")
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KarteInput {
+    #[serde(default)]
+    pub is_target_detected: Option<bool>,
+    #[serde(default)]
+    pub truck_type: Option<String>,
+    #[serde(default)]
+    pub license_plate: Option<String>,
+    #[serde(default)]
+    pub material_type: Option<String>,
+    #[serde(default)]
+    pub upper_area: Option<f64>,
+    #[serde(default)]
+    pub height: Option<f64>,
+    #[serde(default)]
+    pub void_ratio: Option<f64>,
+    #[serde(default)]
+    pub estimated_volume_m3: Option<f64>,
+    #[serde(default)]
+    pub estimated_tonnage: Option<f64>,
+    #[serde(default)]
+    pub confidence_score: Option<f64>,
+}
+
 /// AI estimation result from image analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -56,6 +56,10 @@ pub enum Commands {
         /// Path to image file
         image: PathBuf,
 
+        /// Karte JSON string or file path (required). Null fields will be estimated.
+        #[arg(long)]
+        karte: Option<String>,
+
         /// Skip cache lookup (overrides config)
         #[arg(long)]
         no_cache: bool,
@@ -76,12 +80,12 @@ pub enum Commands {
         #[arg(long)]
         company: Option<String>,
 
-        /// Material type pre-info (e.g., "As殻", "Co殻", "土砂")
-        #[arg(long)]
+        /// Material type pre-info (deprecated; use --karte)
+        #[arg(long, conflicts_with = "karte")]
         material: Option<String>,
 
-        /// Truck class pre-info (e.g., "4tダンプ", "10tダンプ")
-        #[arg(long)]
+        /// Truck class pre-info (deprecated; use --karte)
+        #[arg(long, conflicts_with = "karte")]
         truck_class: Option<String>,
     },
 

@@ -89,11 +89,19 @@ pub const STEP3_VOID_RATIO_PROMPT: &str = r#"
 pub const VOLUME_ESTIMATION_PROMPT: &str = r#"Output ONLY JSON: {"isTargetDetected":true,"truckType":"4tダンプ","licensePlate":null,"materialType":"???","upperArea":5.0,"height":0.4,"voidRatio":0.35,"confidenceScore":0.8,"reasoning":"???"}"#;
 
 /// Build estimation prompt with pre-filled truck type and material type
-/// AI fills in the null values from image analysis
+/// AI estimates upperArea, height, voidRatio from image (example values provided as guide)
 pub fn build_estimation_prompt(truck_type: &str, material_type: &str) -> String {
     format!(
-        r#"Fill null values from image. Output ONLY JSON: {{"isTargetDetected":true,"truckType":"{}","materialType":"{}","upperArea":null,"height":null,"voidRatio":null,"confidenceScore":null,"reasoning":null}}"#,
+        r#"Output ONLY JSON: {{"isTargetDetected":true,"truckType":"{}","licensePlate":null,"materialType":"{}","upperArea":5.0,"height":0.4,"voidRatio":0.35,"confidenceScore":0.8,"reasoning":"???"}}"#,
         truck_type, material_type
+    )
+}
+
+/// Build estimation prompt with Karte JSON (non-null values must be preserved)
+pub fn build_karte_prompt(karte_json: &str) -> String {
+    format!(
+        "Output ONLY JSON. Given the following Karte JSON, preserve any non-null values and ONLY estimate fields that are null. Do not change provided values.\nKarte: {}\nReturn JSON in the same schema as Karte, plus any missing estimation fields if needed.",
+        karte_json
     )
 }
 
