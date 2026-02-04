@@ -98,11 +98,40 @@ pub fn build_estimation_prompt(truck_type: &str, material_type: &str) -> String 
 }
 
 /// Build estimation prompt with Karte JSON (non-null values must be preserved)
+/// Provides example values for null fields to guide AI estimation
 pub fn build_karte_prompt(karte_json: &str) -> String {
-    format!(
-        "Output ONLY JSON. Given the following Karte JSON, preserve any non-null values and ONLY estimate fields that are null. Do not change provided values.\nKarte: {}\nReturn JSON in the same schema as Karte, plus any missing estimation fields if needed.",
-        karte_json
-    )
+    // Parse and rebuild with example values for null fields
+    if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(karte_json) {
+        if let Some(obj) = v.as_object_mut() {
+            // Provide example values for null fields (AI will adjust based on image)
+            if obj.get("upperArea").map(|v| v.is_null()).unwrap_or(true) {
+                obj.insert("upperArea".to_string(), serde_json::json!(5.0));
+            }
+            if obj.get("height").map(|v| v.is_null()).unwrap_or(true) {
+                obj.insert("height".to_string(), serde_json::json!(0.4));
+            }
+            if obj.get("voidRatio").map(|v| v.is_null()).unwrap_or(true) {
+                obj.insert("voidRatio".to_string(), serde_json::json!(0.35));
+            }
+            if obj.get("confidenceScore").map(|v| v.is_null()).unwrap_or(true) {
+                obj.insert("confidenceScore".to_string(), serde_json::json!(0.8));
+            }
+            if obj.get("reasoning").map(|v| v.is_null()).unwrap_or(true) {
+                obj.insert("reasoning".to_string(), serde_json::json!("???"));
+            }
+            // Always ensure isTargetDetected is true (required field)
+            if obj.get("isTargetDetected").map(|v| v.is_null() || !v.is_boolean()).unwrap_or(true) {
+                obj.insert("isTargetDetected".to_string(), serde_json::json!(true));
+            }
+            if !obj.contains_key("licensePlate") {
+                obj.insert("licensePlate".to_string(), serde_json::Value::Null);
+            }
+
+            return format!("Output ONLY JSON: {}", serde_json::to_string(&v).unwrap_or_default());
+        }
+    }
+    // Fallback
+    format!("Output ONLY JSON: {}", karte_json)
 }
 
 /// Load grade definitions for prompt
