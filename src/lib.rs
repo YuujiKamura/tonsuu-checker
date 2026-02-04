@@ -17,6 +17,11 @@ pub mod store;
 pub mod types;
 pub mod vision;
 
+/// Backwards-compat shim for legacy imports (tests, older callers)
+pub mod analyzer {
+    pub use crate::vision::*;
+}
+
 /// Re-export plate_local for backwards compatibility
 /// This module is deprecated. Please use `crate::vision::plate_recognizer` instead.
 pub mod plate_local {

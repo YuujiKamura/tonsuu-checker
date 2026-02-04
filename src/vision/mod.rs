@@ -18,6 +18,7 @@ pub use ai::prompts::{
     build_staged_analysis_prompt, GradedReferenceItem,
 };
 pub use cache::Cache;
+pub use volume_estimator::analyze_shaken;
 
 use crate::error::{Error, Result};
 use crate::store::{GradedHistoryEntry, Store};
