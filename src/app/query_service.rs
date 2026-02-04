@@ -251,7 +251,6 @@ fn open_history_store(config: &Config) -> std::result::Result<Store, QueryServic
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     // Note: Integration tests would require a test config and store setup
     // Unit tests for query service are limited since it primarily wraps store calls
