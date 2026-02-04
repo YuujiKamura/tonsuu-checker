@@ -80,47 +80,7 @@ pub const STEP3_VOID_RATIO_PROMPT: &str = r#"
 
 /// Volume estimation prompt (shared across all prompt functions)
 /// 改善版: AIは推定のみ、計算はプログラム側で行う
-pub const VOLUME_ESTIMATION_PROMPT: &str = r#"
-# あなたへの命令
-あなたは建設廃棄物の積載量推定の専門家です。提供されたダンプカーの画像を分析し、積載量の主要パラメータを推定してください。計算は不要です。
-
-# 既知のデータ (固定値)
-- トラックの荷台寸法 (4tダンプ):
-  - 底部面積: 6.8m² (3.4m × 2.0m)
-  - 側板の高さ: 0.34m
-
-# 分析ステップ
-1.  【画像認識】
-    - 画像にダンプカーの荷台が写っているか確認
-    - 積載物の種類（As殻、Co殻、土砂など）を特定
-
-2.  【高さ推定】
-    側板の高さ(0.34m)を基準に、積載物の平均高さ(height)をメートルで推定
-    例：「側板の約1.2倍 → 0.40m」
-
-3.  【上面積推定】
-    山の頂部面積(upperArea)をm²で推定
-    - 平積み: 6.8m²（底面積と同じ）
-    - 山盛り: 4.0〜6.0m²程度
-
-4.  【空隙率推定】
-    塊の大きさから空隙率(voidRatio)を選択
-    - 細かい塊: 0.30
-    - 普通の塊: 0.35
-    - 大きい塊: 0.40
-
-# 回答形式（JSON）
-{
-  "isTargetDetected": boolean,
-  "truckType": "4tダンプ",
-  "licensePlate": string | null,
-  "materialType": string,
-  "upperArea": number,
-  "height": number,
-  "voidRatio": number,
-  "confidenceScore": number,
-  "reasoning": string
-}"#;
+pub const VOLUME_ESTIMATION_PROMPT: &str = r#"Output ONLY JSON: {"isTargetDetected":true,"truckType":"4tダンプ","licensePlate":null,"materialType":"???","upperArea":5.0,"height":0.4,"voidRatio":0.35,"confidenceScore":0.8,"reasoning":"???"}"#;
 
 /// Load grade definitions for prompt
 pub const LOAD_GRADES_PROMPT: &str = r#"■ 積載等級（実測値 ÷ 最大積載量）
@@ -152,10 +112,7 @@ pub struct GradedReferenceItem {
 
 /// Build analysis prompt for a single image
 pub fn build_analysis_prompt() -> String {
-    format!(
-        "{}\n{}\n\n画像を分析し、JSON形式で結果を返してください。",
-        CORE_RULES_PROMPT, VOLUME_ESTIMATION_PROMPT
-    )
+    VOLUME_ESTIMATION_PROMPT.to_string()
 }
 
 /// Build analysis prompt with max capacity instruction
@@ -174,42 +131,11 @@ pub fn build_analysis_prompt_with_capacity(max_capacity: Option<f64>) -> String 
 
 /// Build analysis prompt with graded reference data (Stage 2+)
 pub fn build_staged_analysis_prompt(
-    max_capacity: Option<f64>,
-    graded_references: &[GradedReferenceItem],
+    _max_capacity: Option<f64>,
+    _graded_references: &[GradedReferenceItem],
 ) -> String {
-    let mut prompt = String::new();
-
-    // Max capacity instruction
-    if let Some(cap) = max_capacity {
-        prompt.push_str(&format!(
-            "【重要】この車両の最大積載量は{}トンです。\n\n",
-            cap
-        ));
-    }
-
-    // Core rules
-    prompt.push_str(CORE_RULES_PROMPT);
-    prompt.push_str("\n");
-
-    // Add graded reference data if available
-    if !graded_references.is_empty() {
-        prompt.push_str("\n");
-        prompt.push_str(LOAD_GRADES_PROMPT);
-        prompt.push_str("\n\n【実測データ】\n");
-
-        for item in graded_references {
-            let memo = item.memo.as_ref().map(|m| format!(" {}", m)).unwrap_or_default();
-            prompt.push_str(&format!(
-                "- 【{}】実測{:.1}t / 最大{:.1}t（{:.0}%）{}\n",
-                item.grade_name, item.actual_tonnage, item.max_capacity, item.load_ratio, memo
-            ));
-        }
-    }
-
-    // Volume estimation (shared)
-    prompt.push_str(VOLUME_ESTIMATION_PROMPT);
-    prompt.push_str("\n\n画像を分析し、JSON形式で結果を返してください。");
-    prompt
+    // Simplified: just use VOLUME_ESTIMATION_PROMPT with fill-in-the-blanks JSON
+    VOLUME_ESTIMATION_PROMPT.to_string()
 }
 
 /// Build batch analysis prompt
