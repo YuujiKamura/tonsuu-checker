@@ -14,6 +14,7 @@ pub mod volume_estimator;
 // Re-export main types for convenience
 pub use ai::prompts::{
     build_analysis_prompt,
+    build_estimation_prompt,
     build_staged_analysis_prompt, GradedReferenceItem,
 };
 pub use cache::Cache;
@@ -85,6 +86,10 @@ pub struct StagedAnalysisOptions {
     pub truck_class: Option<TruckClass>,
     /// Ensemble count (number of inference iterations)
     pub ensemble_count: u32,
+    /// Truck type pre-info (e.g., "4tダンプ")
+    pub truck_type_hint: Option<String>,
+    /// Material type pre-info (e.g., "As殻", "Co殻", "土砂")
+    pub material_type: Option<String>,
 }
 
 impl Default for StagedAnalysisOptions {
@@ -92,6 +97,8 @@ impl Default for StagedAnalysisOptions {
         Self {
             truck_class: None,
             ensemble_count: 1,
+            truck_type_hint: None,
+            material_type: None,
         }
     }
 }
@@ -106,6 +113,18 @@ impl StagedAnalysisOptions {
     #[allow(dead_code)]
     pub fn with_ensemble_count(mut self, count: u32) -> Self {
         self.ensemble_count = count.max(1);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_truck_type_hint(mut self, truck_type: String) -> Self {
+        self.truck_type_hint = Some(truck_type);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_material_type(mut self, material_type: String) -> Self {
+        self.material_type = Some(material_type);
         self
     }
 }
@@ -151,7 +170,10 @@ pub fn analyze_image_staged(
         notify(&format!("推論 {}/{} 実行中...", iteration + 1, target_count));
 
         // Build prompt based on available data
-        let prompt = if !graded_stock.is_empty() {
+        let prompt = if let (Some(truck_type), Some(material_type)) = (&options.truck_type_hint, &options.material_type) {
+            // Use pre-filled prompt when both truck_type and material_type are provided
+            build_estimation_prompt(truck_type, material_type)
+        } else if !graded_stock.is_empty() {
             // Stage 2+: Use graded reference data
             let references: Vec<GradedReferenceItem> = graded_stock
                 .iter()

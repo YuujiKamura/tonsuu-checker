@@ -75,6 +75,14 @@ pub enum Commands {
         /// Filter by transport company name (e.g., "松尾運搬")
         #[arg(long)]
         company: Option<String>,
+
+        /// Material type pre-info (e.g., "As殻", "Co殻", "土砂")
+        #[arg(long)]
+        material: Option<String>,
+
+        /// Truck class pre-info (e.g., "4tダンプ", "10tダンプ")
+        #[arg(long)]
+        truck_class: Option<String>,
     },
 
     /// Batch analyze images in a folder

@@ -72,6 +72,12 @@ pub struct AnalysisOptions {
 
     /// Verbose output (for progress callbacks)
     pub verbose: bool,
+
+    /// Material type pre-info (e.g., "As殻", "Co殻", "土砂")
+    pub material_type: Option<String>,
+
+    /// Truck type pre-info (e.g., "4tダンプ", "10tダンプ")
+    pub truck_type_hint: Option<String>,
 }
 
 impl AnalysisOptions {
@@ -110,6 +116,16 @@ impl AnalysisOptions {
 
     pub fn with_verbose(mut self, verbose: bool) -> Self {
         self.verbose = verbose;
+        self
+    }
+
+    pub fn with_material_type(mut self, material_type: String) -> Self {
+        self.material_type = Some(material_type);
+        self
+    }
+
+    pub fn with_truck_type_hint(mut self, truck_type: String) -> Self {
+        self.truck_type_hint = Some(truck_type);
         self
     }
 }
@@ -224,6 +240,8 @@ pub fn analyze_truck_image(
     let staged_options = StagedAnalysisOptions {
         truck_class,
         ensemble_count: options.ensemble_count.max(1),
+        truck_type_hint: options.truck_type_hint.clone(),
+        material_type: options.material_type.clone(),
     };
 
     let estimation = analyze_image_staged(image_path, &analyzer_config, &staged_options, &store, progress)?;

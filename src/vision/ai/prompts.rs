@@ -82,6 +82,15 @@ pub const STEP3_VOID_RATIO_PROMPT: &str = r#"
 /// 改善版: AIは推定のみ、計算はプログラム側で行う
 pub const VOLUME_ESTIMATION_PROMPT: &str = r#"Output ONLY JSON: {"isTargetDetected":true,"truckType":"4tダンプ","licensePlate":null,"materialType":"???","upperArea":5.0,"height":0.4,"voidRatio":0.35,"confidenceScore":0.8,"reasoning":"???"}"#;
 
+/// Build estimation prompt with pre-filled truck type and material type
+/// AI fills in the null values from image analysis
+pub fn build_estimation_prompt(truck_type: &str, material_type: &str) -> String {
+    format!(
+        r#"Fill null values from image. Output ONLY JSON: {{"isTargetDetected":true,"truckType":"{}","materialType":"{}","upperArea":null,"height":null,"voidRatio":null,"confidenceScore":null,"reasoning":null}}"#,
+        truck_type, material_type
+    )
+}
+
 /// Load grade definitions for prompt
 pub const LOAD_GRADES_PROMPT: &str = r#"■ 積載等級（実測値 ÷ 最大積載量）
 - 軽すぎ: 0〜80%

@@ -153,13 +153,15 @@ pub fn execute(cli: Cli) -> Result<()> {
             plate,
             skip_yolo_class_only,
             company,
+            material,
+            truck_class,
         } => {
             // Use CLI ensemble if specified, otherwise config value
             let ensemble_count = ensemble.unwrap_or(config.ensemble_count);
             // Cache disabled if: --no-cache OR config.cache_enabled=false
             let use_cache = !no_cache && config.cache_enabled;
             let output_format = cli.format.unwrap_or(config.output_format);
-            cmd_analyze(&cli, &config, image.clone(), use_cache, ensemble_count, output_format, plate.clone(), skip_yolo_class_only.clone(), company.clone())
+            cmd_analyze(&cli, &config, image.clone(), use_cache, ensemble_count, output_format, plate.clone(), skip_yolo_class_only.clone(), company.clone(), material.clone(), truck_class.clone())
         }
 
         Commands::Batch {
@@ -257,6 +259,8 @@ fn cmd_analyze(
     manual_plate: Option<String>,
     skip_yolo_class_only: Option<String>,
     filter_company: Option<String>,
+    material_type: Option<String>,
+    truck_type_hint: Option<String>,
 ) -> Result<()> {
     // Initialize profiler
     let mut profiler = AnalysisProfiler::new();
@@ -295,6 +299,14 @@ fn cmd_analyze(
 
     if let Some(company) = filter_company {
         options = options.with_company_filter(company);
+    }
+
+    if let Some(material) = material_type {
+        options = options.with_material_type(material);
+    }
+
+    if let Some(truck_type) = truck_type_hint {
+        options = options.with_truck_type_hint(truck_type);
     }
 
     // Create progress callback for verbose mode
