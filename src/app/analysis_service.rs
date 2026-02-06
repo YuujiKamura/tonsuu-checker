@@ -243,7 +243,8 @@ pub fn analyze_truck_image(
     // Step 6: Run staged analysis
     let analyzer_config = AnalyzerConfig::default()
         .with_backend(&config.backend)
-        .with_model(config.model.clone());
+        .with_model(config.model.clone())
+        .with_slope_factor(config.slope_factor);
 
     let staged_options = StagedAnalysisOptions {
         truck_class,

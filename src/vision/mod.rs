@@ -33,6 +33,7 @@ use std::path::Path;
 pub struct AnalyzerConfig {
     pub backend: Backend,
     pub model: Option<String>,
+    pub slope_factor: f64,
 }
 
 impl Default for AnalyzerConfig {
@@ -40,6 +41,7 @@ impl Default for AnalyzerConfig {
         Self {
             backend: Backend::Gemini,
             model: None,
+            slope_factor: 1.0,
         }
     }
 }
@@ -56,6 +58,11 @@ impl AnalyzerConfig {
 
     pub fn with_model(mut self, model: Option<String>) -> Self {
         self.model = model;
+        self
+    }
+
+    pub fn with_slope_factor(mut self, slope_factor: f64) -> Self {
+        self.slope_factor = slope_factor.max(0.0);
         self
     }
 }
@@ -78,7 +85,7 @@ pub fn analyze_image(image_path: &Path, config: &AnalyzerConfig) -> Result<Estim
     let response = analyze(&prompt, &[image_path.to_path_buf()], options)?;
 
     // Parse response
-    parse_response(&response)
+    parse_response(&response, config.slope_factor)
 }
 
 /// Options for staged analysis
@@ -215,7 +222,7 @@ pub fn analyze_image_staged(
 
         // Call AI
         let response = analyze(&prompt, &[image_path.to_path_buf()], ai_options)?;
-        let result = parse_response(&response)?;
+        let result = parse_response(&response, config.slope_factor)?;
 
         // max_capacityが指定されていない場合は、graded_stockを取得せずにそのまま推論を続ける
 
@@ -243,7 +250,7 @@ pub fn analyze_image_staged_ensemble(
 }
 
 /// Parse AI response into EstimationResult
-fn parse_response(response: &str) -> Result<EstimationResult> {
+fn parse_response(response: &str, slope_factor: f64) -> Result<EstimationResult> {
     // Try to extract JSON from response (may have markdown code blocks)
     let json_str = extract_json_from_response(response);
 
@@ -265,7 +272,7 @@ fn parse_response(response: &str) -> Result<EstimationResult> {
 
     // Calculate volume and tonnage if not provided by AI (program-side calculation)
     if result.estimated_volume_m3 == 0.0 || result.estimated_tonnage == 0.0 {
-        calculate_volume_and_tonnage(&mut result);
+        calculate_volume_and_tonnage(&mut result, slope_factor);
     }
 
     Ok(result)
@@ -274,7 +281,7 @@ fn parse_response(response: &str) -> Result<EstimationResult> {
 /// Calculate volume and tonnage from estimated parameters
 /// Formula: 体積 = (upperArea + lowerArea) / 2 × height
 ///          重量 = 体積 × 密度 × (1 - voidRatio)
-fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
+fn calculate_volume_and_tonnage(result: &mut EstimationResult, slope_factor: f64) {
     const LOWER_AREA: f64 = 6.8; // 4tダンプ底面積 (m²)
 
     // Get density from material type
@@ -286,11 +293,13 @@ fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
     // Get parameters with defaults
     let upper_area = result.upper_area.unwrap_or(LOWER_AREA);
     let height = result.height.unwrap_or(0.0);
+    let slope = result.slope.unwrap_or(0.0);
     let void_ratio = result.void_ratio.unwrap_or(0.35);
 
     // Calculate
     if height > 0.0 {
-        let volume = (upper_area + LOWER_AREA) / 2.0 * height;
+        let effective_height = (height - slope * slope_factor).max(0.0);
+        let volume = (upper_area + LOWER_AREA) / 2.0 * effective_height;
         let tonnage = volume * density * (1.0 - void_ratio);
 
         result.estimated_volume_m3 = (volume * 100.0).round() / 100.0; // Round to 2 decimals
@@ -439,5 +448,23 @@ mod tests {
     fn test_extract_json_with_text() {
         let response = "Here is the result: {\"test\": 123} end";
         assert_eq!(extract_json_from_response(response), "{\"test\": 123}");
+    }
+
+    #[test]
+    fn test_slope_factor_affects_height() {
+        let mut r = EstimationResult::default();
+        r.upper_area = Some(6.8);
+        r.height = Some(0.5);
+        r.slope = Some(0.2);
+        r.void_ratio = Some(0.35);
+        r.material_type = "As殻".to_string();
+
+        calculate_volume_and_tonnage(&mut r, 1.0);
+        let t1 = r.estimated_tonnage;
+
+        calculate_volume_and_tonnage(&mut r, 2.0);
+        let t2 = r.estimated_tonnage;
+
+        assert!(t2 < t1);
     }
 }

@@ -144,6 +144,9 @@ pub fn execute(cli: Cli) -> Result<()> {
     if cli.model.is_some() {
         config.model = cli.model.clone();
     }
+    if let Some(slope_factor) = cli.slope_factor {
+        config.slope_factor = slope_factor;
+    }
 
     match &cli.command {
         Commands::Analyze {
@@ -205,6 +208,7 @@ pub fn execute(cli: Cli) -> Result<()> {
             set_cache,
             set_output,
             set_ensemble,
+            set_slope_factor,
             set_plate_local,
             set_plate_local_cmd,
             set_plate_local_min_conf,
@@ -217,6 +221,7 @@ pub fn execute(cli: Cli) -> Result<()> {
             *set_cache,
             *set_output,
             *set_ensemble,
+            *set_slope_factor,
             *set_plate_local,
             set_plate_local_cmd.clone(),
             *set_plate_local_min_conf,
@@ -463,6 +468,7 @@ fn cmd_batch(
     };
     let backend = config.backend.clone();
     let model = config.model.clone();
+    let slope_factor = config.slope_factor;
 
     // Setup progress bar
     let multi_progress = MultiProgress::new();
@@ -493,13 +499,15 @@ fn cmd_batch(
         let cache_dir = cache_dir.clone();
         let backend = backend.clone();
         let model = model.clone();
+        let slope_factor = slope_factor;
         let pb = main_pb.clone();
 
         let handle = thread::spawn(move || {
             // Setup analyzer config for this worker
             let analyzer_config = AnalyzerConfig::default()
                 .with_backend(&backend)
-                .with_model(model);
+                .with_model(model)
+                .with_slope_factor(slope_factor);
 
             // Setup cache for this worker (only if caching enabled and dir available)
             let cache = cache_dir.and_then(|dir| Cache::new(dir).ok());
@@ -682,6 +690,7 @@ fn cmd_config(
     set_cache: Option<bool>,
     set_output: Option<OutputFormat>,
     set_ensemble: Option<u32>,
+    set_slope_factor: Option<f64>,
     set_plate_local: Option<bool>,
     set_plate_local_cmd: Option<String>,
     set_plate_local_min_conf: Option<f32>,
@@ -721,6 +730,11 @@ fn cmd_config(
 
     if let Some(ensemble_count) = set_ensemble {
         config.ensemble_count = ensemble_count;
+        modified = true;
+    }
+
+    if let Some(slope_factor) = set_slope_factor {
+        config.slope_factor = slope_factor;
         modified = true;
     }
 
@@ -1094,7 +1108,8 @@ fn cmd_auto_collect(
     // Setup analyzer config
     let analyzer_config = AnalyzerConfig::default()
         .with_backend(&config.backend)
-        .with_model(config.model.clone());
+        .with_model(config.model.clone())
+        .with_slope_factor(config.slope_factor);
 
     // Progress bar
     let pb = ProgressBar::new(vehicle_folders.len() as u64);
@@ -1143,6 +1158,7 @@ fn cmd_auto_collect(
         let next_index = Arc::new(AtomicUsize::new(0));
         let backend = config.backend.clone();
         let model = config.model.clone();
+        let slope_factor = config.slope_factor;
         let verbose = cli.verbose;
         let company_arc = Arc::new(company.clone());
 
@@ -1155,13 +1171,15 @@ fn cmd_auto_collect(
             let results = Arc::clone(&results);
             let backend = backend.clone();
             let model = model.clone();
+            let slope_factor = slope_factor;
             let pb = pb.clone();
             let company = Arc::clone(&company_arc);
 
             let handle = thread::spawn(move || {
                 let worker_config = AnalyzerConfig::default()
                     .with_backend(&backend)
-                    .with_model(model);
+                    .with_model(model)
+                    .with_slope_factor(slope_factor);
 
                 loop {
                     let idx = next_index.fetch_add(1, Ordering::SeqCst);

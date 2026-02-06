@@ -215,6 +215,10 @@ pub struct Config {
     #[serde(default = "default_ensemble_count")]
     pub ensemble_count: u32,
 
+    /// Slope factor for effective height reduction
+    #[serde(default = "default_slope_factor")]
+    pub slope_factor: f64,
+
     /// Enable local license plate detection/OCR
     #[serde(default = "default_false")]
     pub plate_local_enabled: bool,
@@ -244,6 +248,10 @@ fn default_ensemble_count() -> u32 {
     1
 }
 
+fn default_slope_factor() -> f64 {
+    1.0
+}
+
 fn default_true() -> bool {
     true
 }
@@ -265,6 +273,7 @@ impl Default for Config {
             cache_dir: None,
             output_format: default_output_format(),
             ensemble_count: default_ensemble_count(),
+            slope_factor: default_slope_factor(),
             plate_local_enabled: default_false(),
             plate_local_command: None,
             plate_local_min_conf: default_plate_local_min_conf(),
@@ -356,6 +365,7 @@ impl std::fmt::Display for Config {
         )?;
         writeln!(f, "Output format:  {}", self.output_format)?;
         writeln!(f, "Ensemble count: {}", self.ensemble_count)?;
+        writeln!(f, "Slope factor:   {:.2}", self.slope_factor)?;
         writeln!(
             f,
             "Plate local:    {}",
@@ -381,5 +391,16 @@ impl std::fmt::Display for Config {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_slope_factor() {
+        let cfg = Config::default();
+        assert_eq!(cfg.slope_factor, 1.0);
     }
 }

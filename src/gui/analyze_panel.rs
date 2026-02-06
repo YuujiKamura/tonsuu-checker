@@ -366,6 +366,7 @@ impl AnalyzePanel {
         let backend = config.backend.clone();
         let model = config.model.clone();
         let ensemble_count = config.ensemble_count;
+        let slope_factor = config.slope_factor;
         let use_staged = self.use_staged_analysis;
 
         // Parse max capacity if provided
@@ -414,9 +415,10 @@ impl AnalyzePanel {
                     max_capacity,
                     graded_references,
                     ensemble_count,
+                    slope_factor,
                 );
             } else {
-                run_simple_analysis(sender, image_path, backend, model);
+                run_simple_analysis(sender, image_path, backend, model, slope_factor);
             }
         });
     }
@@ -428,12 +430,14 @@ fn run_simple_analysis(
     image_path: PathBuf,
     backend: String,
     model: Option<String>,
+    slope_factor: f64,
 ) {
     let _ = sender.send(AnalysisStatus::BuildingPrompt);
 
     let analyzer_config = AnalyzerConfig::default()
         .with_backend(&backend)
-        .with_model(model);
+        .with_model(model)
+        .with_slope_factor(slope_factor);
 
     let _ = sender.send(AnalysisStatus::CallingAI { backend: backend.clone() });
 
@@ -460,6 +464,7 @@ fn run_staged_analysis(
     max_capacity: Option<f64>,
     graded_references: Vec<GradedReferenceItem>,
     ensemble_count: u32,
+    slope_factor: f64,
 ) {
     let _ = sender.send(AnalysisStatus::BuildingPrompt);
 
@@ -507,7 +512,7 @@ fn run_staged_analysis(
         match analyze(&prompt, &[image_path.clone()], ai_options) {
             Ok(response) => {
                 let _ = sender.send(AnalysisStatus::ParsingResponse);
-                match parse_ai_response(&response) {
+                match parse_ai_response(&response, slope_factor) {
                     Ok(result) => {
                         // After first iteration with no max_capacity, we could
                         // potentially detect truck class and load graded data
@@ -540,7 +545,7 @@ fn run_staged_analysis(
 }
 
 /// Parse AI response into EstimationResult
-fn parse_ai_response(response: &str) -> Result<EstimationResult, String> {
+fn parse_ai_response(response: &str, slope_factor: f64) -> Result<EstimationResult, String> {
     let json_str = extract_json_from_response(response);
     let mut result: EstimationResult = serde_json::from_str(&json_str).map_err(|e| {
         let truncated: String = response.chars().take(500).collect();
@@ -549,14 +554,14 @@ fn parse_ai_response(response: &str) -> Result<EstimationResult, String> {
 
     // Calculate volume and tonnage if not provided by AI
     if result.estimated_volume_m3 == 0.0 || result.estimated_tonnage == 0.0 {
-        calculate_volume_and_tonnage(&mut result);
+        calculate_volume_and_tonnage(&mut result, slope_factor);
     }
 
     Ok(result)
 }
 
 /// Calculate volume and tonnage from estimated parameters
-fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
+fn calculate_volume_and_tonnage(result: &mut EstimationResult, slope_factor: f64) {
     const LOWER_AREA: f64 = 6.8; // 4tダンプ底面積 (m²)
 
     let density = match result.material_type.as_str() {
@@ -566,10 +571,12 @@ fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
 
     let upper_area = result.upper_area.unwrap_or(LOWER_AREA);
     let height = result.height.unwrap_or(0.0);
+    let slope = result.slope.unwrap_or(0.0);
     let void_ratio = result.void_ratio.unwrap_or(0.35);
 
     if height > 0.0 {
-        let volume = (upper_area + LOWER_AREA) / 2.0 * height;
+        let effective_height = (height - slope * slope_factor).max(0.0);
+        let volume = (upper_area + LOWER_AREA) / 2.0 * effective_height;
         let tonnage = volume * density * (1.0 - void_ratio);
         result.estimated_volume_m3 = (volume * 100.0).round() / 100.0;
         result.estimated_tonnage = (tonnage * 100.0).round() / 100.0;

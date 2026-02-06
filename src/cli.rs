@@ -44,6 +44,10 @@ pub struct Cli {
     #[arg(long, short = 'f', global = true)]
     pub format: Option<OutputFormat>,
 
+    /// Slope factor for effective height reduction
+    #[arg(long, global = true)]
+    pub slope_factor: Option<f64>,
+
     /// Verbose output
     #[arg(long, short = 'v', global = true)]
     pub verbose: bool,
@@ -142,6 +146,10 @@ pub enum Commands {
         /// Set default ensemble count
         #[arg(long)]
         set_ensemble: Option<u32>,
+
+        /// Set slope factor
+        #[arg(long)]
+        set_slope_factor: Option<f64>,
 
         /// Enable/disable local license plate detection
         #[arg(long)]
