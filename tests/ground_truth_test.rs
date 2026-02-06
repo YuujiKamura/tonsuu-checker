@@ -128,14 +128,31 @@ fn ground_truth_all() {
     let entries = load_ground_truth();
     let config = default_config();
 
-    let mut results = Vec::new();
-
     println!("\n=== Ground Truth Test ({} images) ===\n", entries.len());
 
-    for entry in &entries {
-        let r = run_single(entry, &config);
-        print_result(&r);
-        results.push(r);
+    let mut handles = Vec::new();
+    for (idx, entry) in entries.into_iter().enumerate() {
+        let cfg = config.clone();
+        let handle = std::thread::spawn(move || {
+            let result = run_single(&entry, &cfg);
+            (idx, result)
+        });
+        handles.push(handle);
+    }
+
+    let mut results = Vec::new();
+    for handle in handles {
+        match handle.join() {
+            Ok((idx, result)) => results.push((idx, result)),
+            Err(_) => panic!("Ground truth thread panicked"),
+        }
+    }
+
+    results.sort_by_key(|(idx, _)| *idx);
+    let results: Vec<RunResult> = results.into_iter().map(|(_, r)| r).collect();
+
+    for r in &results {
+        print_result(r);
     }
 
     // Summary
