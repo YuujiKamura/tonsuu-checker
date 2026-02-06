@@ -17,7 +17,7 @@ fn fixtures_dir() -> PathBuf {
         .join("fixtures")
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct GroundTruthEntry {
     file: String,
     description: String,
@@ -38,8 +38,12 @@ struct RunResult {
     material_type: String,
     upper_area: Option<f64>,
     height: Option<f64>,
+    front_height: Option<f64>,
+    rear_height: Option<f64>,
+    rear_empty_ratio: Option<f64>,
     slope: Option<f64>,
     void_ratio: Option<f64>,
+    frustum_ratio: Option<f64>,
     // AI final values
     estimated_volume_m3: f64,
     estimated_tonnage: f64,
@@ -52,7 +56,8 @@ struct RunResult {
 
 fn default_config() -> AnalyzerConfig {
     AnalyzerConfig::default()
-        .with_model(Some("gemini-2.5-pro".to_string()))
+        .with_model(Some("gemini-3-flash-preview".to_string()))
+        .with_slope_factor(1.5)
 }
 
 fn load_ground_truth() -> Vec<GroundTruthEntry> {
@@ -84,8 +89,12 @@ fn run_single(entry: &GroundTruthEntry, config: &AnalyzerConfig) -> RunResult {
         material_type: result.material_type,
         upper_area: result.upper_area,
         height: result.height,
+        front_height: result.front_height,
+        rear_height: result.rear_height,
+        rear_empty_ratio: result.rear_empty_ratio,
         slope: result.slope,
         void_ratio: result.void_ratio,
+        frustum_ratio: result.frustum_ratio,
         estimated_volume_m3: result.estimated_volume_m3,
         estimated_tonnage: result.estimated_tonnage,
         confidence_score: result.confidence_score,
@@ -104,8 +113,12 @@ fn print_result(r: &RunResult) {
     println!("    material_type: {}", r.material_type);
     println!("    upper_area:    {:?} m²", r.upper_area);
     println!("    height:        {:?} m", r.height);
+    println!("    front_height:  {:?} m", r.front_height);
+    println!("    rear_height:   {:?} m", r.rear_height);
+    println!("    rear_empty:    {:?}", r.rear_empty_ratio);
     println!("    slope:         {:?}°", r.slope);
     println!("    void_ratio:    {:?}", r.void_ratio);
+    println!("    frustumRatio:  {:?}", r.frustum_ratio);
     println!("    volume:        {:.2} m³", r.estimated_volume_m3);
     println!("    confidence:    {:.0}%", r.confidence_score * 100.0);
     println!("  結果:");
@@ -130,21 +143,31 @@ fn ground_truth_all() {
 
     println!("\n=== Ground Truth Test ({} images) ===\n", entries.len());
 
-    let mut handles = Vec::new();
-    for (idx, entry) in entries.into_iter().enumerate() {
-        let cfg = config.clone();
-        let handle = std::thread::spawn(move || {
-            let result = run_single(&entry, &cfg);
-            (idx, result)
-        });
-        handles.push(handle);
-    }
-
     let mut results = Vec::new();
-    for handle in handles {
-        match handle.join() {
-            Ok((idx, result)) => results.push((idx, result)),
-            Err(_) => panic!("Ground truth thread panicked"),
+    let batch_size = 4usize;
+    let delay_secs = 5u64;
+
+    for (batch_index, batch) in entries.chunks(batch_size).enumerate() {
+        let mut handles = Vec::new();
+        for (offset, entry) in batch.iter().cloned().enumerate() {
+            let cfg = config.clone();
+            let idx = batch_index * batch_size + offset;
+            let handle = std::thread::spawn(move || {
+                let result = run_single(&entry, &cfg);
+                (idx, result)
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            match handle.join() {
+                Ok((idx, result)) => results.push((idx, result)),
+                Err(_) => panic!("Ground truth thread panicked"),
+            }
+        }
+
+        if (batch_index + 1) * batch_size < entries.len() {
+            std::thread::sleep(std::time::Duration::from_secs(delay_secs));
         }
     }
 

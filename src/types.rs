@@ -175,6 +175,22 @@ pub struct EstimationResult {
     #[serde(default)]
     pub height: Option<f64>,
 
+    /// 前方(キャブ側)の高さ (m)
+    #[serde(default)]
+    pub front_height: Option<f64>,
+
+    /// 後方(後板側)の高さ (m)
+    #[serde(default)]
+    pub rear_height: Option<f64>,
+
+    /// 後方の空き割合 (0.0-1.0)
+    #[serde(default)]
+    pub rear_empty_ratio: Option<f64>,
+
+    /// 錐台形状に対する充填割合 (0.3~1.0)
+    #[serde(default, alias = "frustumRatio")]
+    pub frustum_ratio: Option<f64>,
+
     /// せん断変形角度 (度)
     #[serde(default)]
     pub slope: Option<f64>,
@@ -218,6 +234,10 @@ impl Default for EstimationResult {
             material_type: String::new(),
             upper_area: None,
             height: None,
+            front_height: None,
+            rear_height: None,
+            rear_empty_ratio: None,
+            frustum_ratio: None,
             slope: None,
             void_ratio: None,
             estimated_volume_m3: 0.0,
@@ -227,6 +247,33 @@ impl Default for EstimationResult {
             material_breakdown: Vec::new(),
             ensemble_count: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_front_rear_height() {
+        let json = r#"{"frontHeight":0.45,"rearHeight":0.20}"#;
+        let result: EstimationResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.front_height, Some(0.45));
+        assert_eq!(result.rear_height, Some(0.20));
+    }
+
+    #[test]
+    fn test_deserialize_rear_empty_ratio() {
+        let json = r#"{"rearEmptyRatio":0.35}"#;
+        let result: EstimationResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.rear_empty_ratio, Some(0.35));
+    }
+
+    #[test]
+    fn test_deserialize_frustum_ratio() {
+        let json = r#"{"frustumRatio":0.85}"#;
+        let result: EstimationResult = serde_json::from_str(json).unwrap();
+        assert!((result.frustum_ratio.unwrap() - 0.85).abs() < 0.001);
     }
 }
 

@@ -571,7 +571,15 @@ fn calculate_volume_and_tonnage(result: &mut EstimationResult, slope_factor: f64
 
     let upper_area = result.upper_area.unwrap_or(LOWER_AREA);
     let height = result.height.unwrap_or(0.0);
-    let slope = result.slope.unwrap_or(0.0);
+    let slope = if let Some(value) = result.slope {
+        value
+    } else if let (Some(front), Some(rear)) = (result.front_height, result.rear_height) {
+        let derived = (front - rear).max(0.0).min(0.30);
+        result.slope = Some(derived);
+        derived
+    } else {
+        0.0
+    };
     let void_ratio = result.void_ratio.unwrap_or(0.35);
 
     if height > 0.0 {

@@ -85,15 +85,15 @@ pub const STEP3_VOID_RATIO_PROMPT: &str = r#"
 
 
 /// Volume estimation prompt (shared across all prompt functions)
-/// 改善版: AIは推定のみ、計算はプログラム側で行う
-pub const VOLUME_ESTIMATION_PROMPT: &str = r#"Output ONLY JSON: {"isTargetDetected":true,"truckType":"4tダンプ","licensePlate":null,"materialType":"???","upperArea":5.0,"height":0.4,"voidRatio":0.35,"confidenceScore":0.8,"reasoning":"???"}"#;
+/// heightTrend必須 + 画像に基づく値調整指示
+pub const VOLUME_ESTIMATION_PROMPT: &str = r#"Output ONLY JSON: {"frustumRatio":0,"upperArea":0,"height":0,"voidRatio":0,"materialType":"?","truckType":"?"} Adjust each value based on the image: frustumRatio(0.3~1.0,荷台の錐台形状に対する充填割合。1.0=錐台にきっちり充填,0.5=半分程度,後板付近の脱落防止傾斜は減点しない) upperArea(3.0~6.5m²) height(0.00~0.60m,0.05m刻み,後板上縁=0.30m,ヒンジ金具=0.50m) voidRatio(0.10~0.20)"#;
 
 /// Build estimation prompt with pre-filled truck type and material type
 /// AI estimates upperArea, height, voidRatio from image (example values provided as guide)
 pub fn build_estimation_prompt(truck_type: &str, material_type: &str) -> String {
     format!(
-        r#"Output ONLY JSON: {{"isTargetDetected":true,"truckType":"{}","licensePlate":null,"materialType":"{}","upperArea":5.0,"height":0.4,"voidRatio":0.35,"confidenceScore":0.8,"reasoning":"???"}}"#,
-        truck_type, material_type
+        r#"Output ONLY JSON: {{"frustumRatio":0,"upperArea":0,"height":0,"materialType":"{}","truckType":"{}"}} Adjust each value based on the image: frustumRatio(0.3~1.0,荷台の錐台形状に対する充填割合。1.0=錐台にきっちり充填,0.5=半分程度,後板付近の脱落防止傾斜は減点しない) upperArea(3.0~6.5m²) height(0.00~0.60m,0.05m刻み,後板上縁=0.30m,ヒンジ金具=0.50m) voidRatio(0.10~0.20)"#,
+        material_type, truck_type
     )
 }
 
@@ -109,6 +109,9 @@ pub fn build_karte_prompt(karte_json: &str) -> String {
             }
             if obj.get("height").map(|v| v.is_null()).unwrap_or(true) {
                 obj.insert("height".to_string(), serde_json::json!(0.4));
+            }
+            if obj.get("frustumRatio").map(|v| v.is_null()).unwrap_or(true) {
+                obj.insert("frustumRatio".to_string(), serde_json::json!(0));
             }
             if obj.get("voidRatio").map(|v| v.is_null()).unwrap_or(true) {
                 obj.insert("voidRatio".to_string(), serde_json::json!(0.35));
@@ -142,6 +145,16 @@ pub const LOAD_GRADES_PROMPT: &str = r#"■ 積載等級（実測値 ÷ 最大�
 - ちょうど: 90〜95%
 - ギリOK: 95〜100%
 - 積みすぎ: 100%超"#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_volume_prompt_contains_frustum_ratio() {
+        assert!(VOLUME_ESTIMATION_PROMPT.contains("frustumRatio"));
+    }
+}
 
 /// Registered vehicle info for prompt
 #[allow(dead_code)]

@@ -279,7 +279,7 @@ fn parse_response(response: &str, slope_factor: f64) -> Result<EstimationResult>
 }
 
 /// Calculate volume and tonnage from estimated parameters
-/// Formula: 体積 = (upperArea + lowerArea) / 2 × height
+/// Formula: 体積 = (upperArea + lowerArea) / 2 × height × frustumRatio
 ///          重量 = 体積 × 密度 × (1 - voidRatio)
 fn calculate_volume_and_tonnage(result: &mut EstimationResult, slope_factor: f64) {
     const LOWER_AREA: f64 = 6.8; // 4tダンプ底面積 (m²)
@@ -293,16 +293,25 @@ fn calculate_volume_and_tonnage(result: &mut EstimationResult, slope_factor: f64
     // Get parameters with defaults
     let upper_area = result.upper_area.unwrap_or(LOWER_AREA);
     let height = result.height.unwrap_or(0.0);
-    let slope = result.slope.unwrap_or(0.0);
-    let void_ratio = result.void_ratio.unwrap_or(0.35);
+    let slope = if let Some(value) = result.slope {
+        value
+    } else if let (Some(front), Some(rear)) = (result.front_height, result.rear_height) {
+        let derived = (front - rear).max(0.0).min(0.30);
+        result.slope = Some(derived);
+        derived
+    } else {
+        0.0
+    };
+    let void_ratio = 0.2; // 固定値（frustumRatioとの二重減算防止）
+    let frustum_ratio = result.frustum_ratio.unwrap_or(1.0).clamp(0.1, 1.0);
 
     // Calculate
     if height > 0.0 {
         let effective_height = (height - slope * slope_factor).max(0.0);
-        let volume = (upper_area + LOWER_AREA) / 2.0 * effective_height;
+        let volume = (upper_area + LOWER_AREA) / 2.0 * effective_height * frustum_ratio;
         let tonnage = volume * density * (1.0 - void_ratio);
 
-        result.estimated_volume_m3 = (volume * 100.0).round() / 100.0; // Round to 2 decimals
+        result.estimated_volume_m3 = (volume * 100.0).round() / 100.0;
         result.estimated_tonnage = (tonnage * 100.0).round() / 100.0;
     }
 }
@@ -448,6 +457,20 @@ mod tests {
     fn test_extract_json_with_text() {
         let response = "Here is the result: {\"test\": 123} end";
         assert_eq!(extract_json_from_response(response), "{\"test\": 123}");
+    }
+
+    #[test]
+    fn test_slope_derived_from_front_rear() {
+        let mut r = EstimationResult::default();
+        r.front_height = Some(0.45);
+        r.rear_height = Some(0.20);
+        r.upper_area = Some(6.8);
+        r.height = Some(0.45);
+        r.void_ratio = Some(0.35);
+        r.material_type = "As殻".to_string();
+
+        calculate_volume_and_tonnage(&mut r, 1.0);
+        assert!(r.slope.unwrap_or(0.0) > 0.0);
     }
 
     #[test]
