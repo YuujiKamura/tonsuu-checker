@@ -29,3 +29,5 @@ tests/fixtures/
 /.roo/
 /.trae/
 /.windsurf/
+
+.worktrees
