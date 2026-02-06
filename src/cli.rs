@@ -44,6 +44,10 @@ pub struct Cli {
     #[arg(long, short = 'f', global = true)]
     pub format: Option<OutputFormat>,
 
+    /// Usage mode (time_based_quota, pay_per_use)
+    #[arg(long, global = true)]
+    pub usage_mode: Option<String>,
+
     /// Verbose output
     #[arg(long, short = 'v', global = true)]
     pub verbose: bool,
@@ -158,6 +162,10 @@ pub enum Commands {
         /// If local detection fails, fall back to API stage1
         #[arg(long)]
         set_plate_local_fallback: Option<bool>,
+
+        /// Set usage mode (time_based_quota, pay_per_use)
+        #[arg(long)]
+        set_usage_mode: Option<String>,
 
         /// Reset to defaults
         #[arg(long)]

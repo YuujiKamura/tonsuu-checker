@@ -12,6 +12,12 @@ use tonsuu_checker::store::Store;
 /// Available AI backends
 const BACKENDS: &[&str] = &["gemini", "claude", "codex"];
 
+/// Available usage modes (value, display label)
+const USAGE_MODES: &[(&str, &str)] = &[
+    ("time_based_quota", "時間ベース使用量制限"),
+    ("pay_per_use", "従量課金"),
+];
+
 /// Preset models for each backend
 const GEMINI_MODELS: &[&str] = &["gemini-2.5-pro-preview-06-05"];
 const CLAUDE_MODELS: &[&str] = &["claude-opus-4-20250514"];
@@ -38,6 +44,8 @@ pub struct SettingsPanel {
     selected_backend: String,
     /// Model input (can be custom)
     model_input: String,
+    /// Usage mode selection
+    selected_usage_mode: String,
     /// Whether config was modified
     modified: bool,
     /// Status message
@@ -51,6 +59,7 @@ impl SettingsPanel {
         Self {
             selected_backend: config.backend.clone(),
             model_input: config.model.clone().unwrap_or_default(),
+            selected_usage_mode: config.usage_mode.clone(),
             modified: false,
             status_message: None,
             import_dialog: None,
@@ -74,6 +83,24 @@ impl SettingsPanel {
                     self.modified = true;
                     // Clear model when backend changes
                     self.model_input.clear();
+                }
+            }
+        });
+
+        ui.add_space(15.0);
+        ui.separator();
+        ui.add_space(15.0);
+
+        // Usage mode selection
+        ui.label(RichText::new("課金モデル").strong());
+        ui.add_space(5.0);
+
+        ui.horizontal(|ui| {
+            for &(value, label) in USAGE_MODES {
+                let selected = self.selected_usage_mode == value;
+                if ui.selectable_label(selected, label).clicked() {
+                    self.selected_usage_mode = value.to_string();
+                    self.modified = true;
                 }
             }
         });
@@ -159,6 +186,14 @@ impl SettingsPanel {
                         ui.label("アンサンブル数:");
                         ui.label(format!("{}", config.ensemble_count));
                         ui.end_row();
+
+                        ui.label("課金モデル:");
+                        let usage_mode_display = USAGE_MODES.iter()
+                            .find(|(v, _)| *v == config.usage_mode.as_str())
+                            .map(|(_, l)| *l)
+                            .unwrap_or("時間ベース使用量制限");
+                        ui.label(usage_mode_display);
+                        ui.end_row();
                     });
             });
 
@@ -176,6 +211,7 @@ impl SettingsPanel {
             if ui.button("リセット").clicked() {
                 self.selected_backend = config.backend.clone();
                 self.model_input = config.model.clone().unwrap_or_default();
+                self.selected_usage_mode = config.usage_mode.clone();
                 self.modified = false;
                 self.status_message = None;
             }
@@ -429,6 +465,7 @@ impl SettingsPanel {
         } else {
             Some(self.model_input.clone())
         };
+        config.usage_mode = self.selected_usage_mode.clone();
 
         match config.save() {
             Ok(()) => {

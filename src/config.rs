@@ -230,6 +230,10 @@ pub struct Config {
     /// If local detection fails, fall back to API-based stage1
     #[serde(default = "default_true")]
     pub plate_local_fallback_api: bool,
+
+    /// Usage mode (time_based_quota, pay_per_use)
+    #[serde(default = "default_usage_mode")]
+    pub usage_mode: String,
 }
 
 fn default_backend() -> String {
@@ -256,6 +260,10 @@ fn default_plate_local_min_conf() -> f32 {
     0.35
 }
 
+fn default_usage_mode() -> String {
+    "time_based_quota".to_string()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -269,6 +277,7 @@ impl Default for Config {
             plate_local_command: None,
             plate_local_min_conf: default_plate_local_min_conf(),
             plate_local_fallback_api: default_true(),
+            usage_mode: default_usage_mode(),
         }
     }
 }
@@ -374,6 +383,11 @@ impl std::fmt::Display for Config {
             "Plate fallback: {}",
             if self.plate_local_fallback_api { "api" } else { "none" }
         )?;
+        let usage_mode_display = match self.usage_mode.as_str() {
+            "pay_per_use" => "従量課金",
+            _ => "時間ベース使用量制限",
+        };
+        writeln!(f, "Usage mode:     {}", usage_mode_display)?;
 
         if let Ok(path) = Self::config_path() {
             writeln!(f)?;

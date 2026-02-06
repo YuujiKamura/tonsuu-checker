@@ -144,6 +144,9 @@ pub fn execute(cli: Cli) -> Result<()> {
     if cli.model.is_some() {
         config.model = cli.model.clone();
     }
+    if let Some(ref usage_mode) = cli.usage_mode {
+        config.usage_mode = usage_mode.clone();
+    }
 
     match &cli.command {
         Commands::Analyze {
@@ -209,6 +212,7 @@ pub fn execute(cli: Cli) -> Result<()> {
             set_plate_local_cmd,
             set_plate_local_min_conf,
             set_plate_local_fallback,
+            set_usage_mode,
             reset,
         } => cmd_config(
             *show,
@@ -221,6 +225,7 @@ pub fn execute(cli: Cli) -> Result<()> {
             set_plate_local_cmd.clone(),
             *set_plate_local_min_conf,
             *set_plate_local_fallback,
+            set_usage_mode.clone(),
             *reset,
         ),
 
@@ -463,6 +468,7 @@ fn cmd_batch(
     };
     let backend = config.backend.clone();
     let model = config.model.clone();
+    let usage_mode = config.usage_mode.clone();
 
     // Setup progress bar
     let multi_progress = MultiProgress::new();
@@ -493,13 +499,15 @@ fn cmd_batch(
         let cache_dir = cache_dir.clone();
         let backend = backend.clone();
         let model = model.clone();
+        let usage_mode = usage_mode.clone();
         let pb = main_pb.clone();
 
         let handle = thread::spawn(move || {
             // Setup analyzer config for this worker
             let analyzer_config = AnalyzerConfig::default()
                 .with_backend(&backend)
-                .with_model(model);
+                .with_model(model)
+                .with_usage_mode(&usage_mode);
 
             // Setup cache for this worker (only if caching enabled and dir available)
             let cache = cache_dir.and_then(|dir| Cache::new(dir).ok());
@@ -686,6 +694,7 @@ fn cmd_config(
     set_plate_local_cmd: Option<String>,
     set_plate_local_min_conf: Option<f32>,
     set_plate_local_fallback: Option<bool>,
+    set_usage_mode: Option<String>,
     reset: bool,
 ) -> Result<()> {
     if reset {
@@ -741,6 +750,11 @@ fn cmd_config(
 
     if let Some(fallback) = set_plate_local_fallback {
         config.plate_local_fallback_api = fallback;
+        modified = true;
+    }
+
+    if let Some(usage_mode) = set_usage_mode {
+        config.usage_mode = usage_mode;
         modified = true;
     }
 
@@ -1094,7 +1108,8 @@ fn cmd_auto_collect(
     // Setup analyzer config
     let analyzer_config = AnalyzerConfig::default()
         .with_backend(&config.backend)
-        .with_model(config.model.clone());
+        .with_model(config.model.clone())
+        .with_usage_mode(&config.usage_mode);
 
     // Progress bar
     let pb = ProgressBar::new(vehicle_folders.len() as u64);
@@ -1143,6 +1158,7 @@ fn cmd_auto_collect(
         let next_index = Arc::new(AtomicUsize::new(0));
         let backend = config.backend.clone();
         let model = config.model.clone();
+        let usage_mode_str = config.usage_mode.clone();
         let verbose = cli.verbose;
         let company_arc = Arc::new(company.clone());
 
@@ -1155,13 +1171,15 @@ fn cmd_auto_collect(
             let results = Arc::clone(&results);
             let backend = backend.clone();
             let model = model.clone();
+            let usage_mode_for_worker = usage_mode_str.clone();
             let pb = pb.clone();
             let company = Arc::clone(&company_arc);
 
             let handle = thread::spawn(move || {
                 let worker_config = AnalyzerConfig::default()
                     .with_backend(&backend)
-                    .with_model(model);
+                    .with_model(model)
+                    .with_usage_mode(&usage_mode_for_worker);
 
                 loop {
                     let idx = next_index.fetch_add(1, Ordering::SeqCst);
@@ -1607,6 +1625,11 @@ fn cmd_import(config: &Config, file: PathBuf, dry_run: bool) -> Result<()> {
                 upper_area: None,
                 height: None,
                 slope: None,
+                fill_ratio: None,
+                packing_density: None,
+                fill_ratio_l: None,
+                fill_ratio_w: None,
+                fill_ratio_z: None,
                 void_ratio: None,
                 estimated_volume_m3: est.estimated_volume_m3,
                 estimated_tonnage: est.estimated_tonnage,

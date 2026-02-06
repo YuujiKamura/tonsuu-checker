@@ -25,7 +25,7 @@ pub use volume_estimator::analyze_shaken;
 use crate::error::{Error, Result};
 use crate::store::{GradedHistoryEntry, Store};
 use crate::types::{EstimationResult, TruckClass};
-use cli_ai_analyzer::{analyze, AnalyzeOptions, Backend};
+use cli_ai_analyzer::{analyze, AnalyzeOptions, AnalysisSession, Backend, UsageMode};
 use std::path::Path;
 
 /// Analyzer configuration
@@ -33,6 +33,7 @@ use std::path::Path;
 pub struct AnalyzerConfig {
     pub backend: Backend,
     pub model: Option<String>,
+    pub usage_mode: UsageMode,
 }
 
 impl Default for AnalyzerConfig {
@@ -40,6 +41,7 @@ impl Default for AnalyzerConfig {
         Self {
             backend: Backend::Gemini,
             model: None,
+            usage_mode: UsageMode::TimeBasedQuota,
         }
     }
 }
@@ -58,6 +60,14 @@ impl AnalyzerConfig {
         self.model = model;
         self
     }
+
+    pub fn with_usage_mode(mut self, usage_mode: &str) -> Self {
+        self.usage_mode = match usage_mode {
+            "pay_per_use" => UsageMode::PayPerUse,
+            _ => UsageMode::TimeBasedQuota,
+        };
+        self
+    }
 }
 
 /// Analyze a single image and return estimation result
@@ -72,13 +82,135 @@ pub fn analyze_image(image_path: &Path, config: &AnalyzerConfig) -> Result<Estim
         AnalyzeOptions::default()
     };
 
-    options = options.with_backend(config.backend).json();
+    options = options.with_backend(config.backend).json().with_usage_mode(config.usage_mode);
 
     // Call AI analyzer
     let response = analyze(&prompt, &[image_path.to_path_buf()], options)?;
 
     // Parse response
     parse_response(&response)
+}
+
+/// Analyze image using 2-step approach.
+///
+/// Step 1: Estimate height + truck/material (focused attention on height).
+/// Step 2: Estimate remaining parameters with height locked in.
+///
+/// Uses `AnalysisSession` to keep the Gemini session alive so the image
+/// is uploaded only once (step 2 uses `--resume 0`).
+pub fn analyze_image_2step(image_path: &Path, config: &AnalyzerConfig) -> Result<EstimationResult> {
+    use crate::vision::ai::prompts::{build_step1_height_prompt, build_step2_rest_prompt};
+
+    let make_options = || {
+        let mut opts = if let Some(ref model) = config.model {
+            AnalyzeOptions::with_model(model)
+        } else {
+            AnalyzeOptions::default()
+        };
+        opts = opts.with_backend(config.backend).json().with_usage_mode(config.usage_mode);
+        opts
+    };
+
+    let mut session = AnalysisSession::new(make_options())
+        .map_err(|e| Error::AnalysisFailed(format!("Session creation failed: {}", e)))?;
+
+    // Step 1: height + identification (uploads image)
+    let prompt1 = build_step1_height_prompt();
+    let response1 = session.first_turn(&prompt1, &[image_path.to_path_buf()])
+        .map_err(|e| Error::AnalysisFailed(format!("Step 1 failed: {}", e)))?;
+    let step1: EstimationResult = parse_response(&response1)?;
+
+    let height = step1.height.unwrap_or(0.4);
+    let truck_type = if step1.truck_type.is_empty() { "?" } else { &step1.truck_type };
+    let material_type = if step1.material_type.is_empty() { "?" } else { &step1.material_type };
+
+    // Step 2: remaining parameters with height locked (resume, no re-upload)
+    let prompt2 = build_step2_rest_prompt(height, truck_type, material_type);
+    let response2 = session.next_turn(&prompt2)
+        .map_err(|e| Error::AnalysisFailed(format!("Step 2 failed: {}", e)))?;
+    let step2: EstimationResult = parse_response(&response2)?;
+
+    // Merge: use step1's height/truck/material, step2's everything else
+    let mut result = step2;
+    result.height = Some(height);
+    result.truck_type = step1.truck_type;
+    result.material_type = step1.material_type;
+    result.is_target_detected = step1.is_target_detected;
+
+    // Calculate volume and tonnage from merged parameters
+    if result.estimated_volume_m3 == 0.0 || result.estimated_tonnage == 0.0 {
+        calculate_volume_and_tonnage(&mut result);
+    }
+
+    Ok(result)
+}
+
+/// Analyze image using 3-step approach.
+///
+/// Step 1: Height ONLY (maximum attention).
+/// Step 2: Area + slope + truck/material identification (given height).
+/// Step 3: Fill ratios + packing density (given height + area).
+///
+/// Uses `AnalysisSession` to keep the Gemini session alive so the image
+/// is uploaded only once (steps 2-3 use `--resume 0`).
+pub fn analyze_image_3step(image_path: &Path, config: &AnalyzerConfig) -> Result<EstimationResult> {
+    use crate::vision::ai::prompts::{build_step1_height_only_prompt, build_step2_area_prompt, build_step3_fill_prompt};
+
+    let make_options = || {
+        let mut opts = if let Some(ref model) = config.model {
+            AnalyzeOptions::with_model(model)
+        } else {
+            AnalyzeOptions::default()
+        };
+        opts = opts.with_backend(config.backend).json().with_usage_mode(config.usage_mode);
+        opts
+    };
+
+    let mut session = AnalysisSession::new(make_options())
+        .map_err(|e| Error::AnalysisFailed(format!("Session creation failed: {}", e)))?;
+
+    // Step 1: height only (uploads image)
+    let prompt1 = build_step1_height_only_prompt();
+    let response1 = session.first_turn(&prompt1, &[image_path.to_path_buf()])
+        .map_err(|e| Error::AnalysisFailed(format!("Step 1 failed: {}", e)))?;
+    let step1: EstimationResult = parse_response(&response1)?;
+    let height = step1.height.unwrap_or(0.4);
+
+    // Step 2: area + slope + identification (resume, no re-upload)
+    let prompt2 = build_step2_area_prompt(height);
+    let response2 = session.next_turn(&prompt2)
+        .map_err(|e| Error::AnalysisFailed(format!("Step 2 failed: {}", e)))?;
+    let step2: EstimationResult = parse_response(&response2)?;
+    let upper_area = step2.upper_area.unwrap_or(0.5);
+
+    // Step 3: fill ratios + packing (resume, no re-upload)
+    let prompt3 = build_step3_fill_prompt(height, upper_area);
+    let response3 = session.next_turn(&prompt3)
+        .map_err(|e| Error::AnalysisFailed(format!("Step 3 failed: {}", e)))?;
+    let step3: EstimationResult = parse_response(&response3)?;
+
+    // Merge all steps
+    let mut result = EstimationResult::default();
+    result.is_target_detected = true;
+    result.height = Some(height);
+    result.truck_type = step2.truck_type;
+    result.material_type = step2.material_type;
+    result.upper_area = Some(upper_area);
+    result.slope = step2.slope;
+    result.fill_ratio_l = step3.fill_ratio_l;
+    result.fill_ratio_w = step3.fill_ratio_w;
+    result.fill_ratio_z = step3.fill_ratio_z;
+    result.packing_density = step3.packing_density;
+    result.confidence_score = step3.confidence_score;
+    result.reasoning = format!(
+        "3-step: h={:.2}m(step1) area={:.2}(step2) | {}",
+        height, upper_area, step3.reasoning
+    );
+
+    // Calculate volume and tonnage from merged parameters
+    calculate_volume_and_tonnage(&mut result);
+
+    Ok(result)
 }
 
 /// Options for staged analysis
@@ -184,6 +316,7 @@ pub fn analyze_image_staged(
         // Build prompt based on available data
         let prompt = if let Some(karte_json) = &options.karte_json {
             build_karte_prompt(karte_json)
+                .map_err(|e| Error::AnalysisFailed(format!("Invalid karte JSON: {}", e)))?
         } else if let (Some(truck_type), Some(material_type)) = (&options.truck_type_hint, &options.material_type) {
             // Use pre-filled prompt when both truck_type and material_type are provided
             build_estimation_prompt(truck_type, material_type)
@@ -211,7 +344,7 @@ pub fn analyze_image_staged(
         } else {
             AnalyzeOptions::default()
         };
-        ai_options = ai_options.with_backend(config.backend).json();
+        ai_options = ai_options.with_backend(config.backend).json().with_usage_mode(config.usage_mode);
 
         // Call AI
         let response = analyze(&prompt, &[image_path.to_path_buf()], ai_options)?;
@@ -273,7 +406,8 @@ fn parse_response(response: &str) -> Result<EstimationResult> {
 
 /// Calculate volume and tonnage from estimated parameters
 /// Formula: 体積 = (upperArea + lowerArea) / 2 × height
-///          重量 = 体積 × 密度 × (1 - voidRatio)
+///          重量 = 体積 × 密度 × fillRatioZ × packingDensity
+/// fillRatioW → upper_area proxy, fillRatioZ → vertical fill ratio
 fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
     const LOWER_AREA: f64 = 6.8; // 4tダンプ底面積 (m²)
 
@@ -284,17 +418,27 @@ fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
     };
 
     // Get parameters with defaults
-    let upper_area = result.upper_area.unwrap_or(LOWER_AREA);
+    // Use fillRatioW as upper-area proxy if available, fallback to upper_area
+    let upper_area_ratio = result.fill_ratio_w.or(result.upper_area).unwrap_or(0.5);
+    let upper_area = upper_area_ratio * LOWER_AREA;
     let height = result.height.unwrap_or(0.0);
-    let void_ratio = result.void_ratio.unwrap_or(0.35);
+    let slope = result.slope.unwrap_or(0.0);
+    // Use fillRatioZ as vertical fill if available, fallback to fill_ratio
+    let fill_ratio = result.fill_ratio_z.or(result.fill_ratio).unwrap_or(0.85);
+    let packing_density = result.packing_density.unwrap_or(0.80);
 
     // Calculate
+    // slope: 手前が下がっている落差 → 平均高さを slope/2 分だけ減ずる
     if height > 0.0 {
-        let volume = (upper_area + LOWER_AREA) / 2.0 * height;
-        let tonnage = volume * density * (1.0 - void_ratio);
+        let effective_height = (height - slope / 2.0).max(0.0);
+        let volume = (upper_area + LOWER_AREA) / 2.0 * effective_height;
+        let tonnage = volume * density * fill_ratio * packing_density;
 
         result.estimated_volume_m3 = (volume * 100.0).round() / 100.0; // Round to 2 decimals
         result.estimated_tonnage = (tonnage * 100.0).round() / 100.0;
+
+        // Compute void_ratio for backward compatibility
+        result.void_ratio = Some(1.0 - fill_ratio * packing_density);
     }
 }
 

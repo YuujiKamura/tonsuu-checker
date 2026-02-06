@@ -179,7 +179,28 @@ pub struct EstimationResult {
     #[serde(default)]
     pub slope: Option<f64>,
 
+    /// シルエット充填率 (0.7~1.0): 錐台に対する実際の山の充填度
+    #[serde(default)]
+    pub fill_ratio: Option<f64>,
+
+    /// 積み方の粗さの逆 (0.7~0.9): ガラ同士の詰まり具合
+    #[serde(default)]
+    pub packing_density: Option<f64>,
+
+    /// 長さ方向の充填率 (0.7~1.0)
+    #[serde(default)]
+    pub fill_ratio_l: Option<f64>,
+
+    /// 幅方向の充填率 (0.7~1.0)
+    #[serde(default)]
+    pub fill_ratio_w: Option<f64>,
+
+    /// 高さ方向の充填率 (0.7~1.0)
+    #[serde(default)]
+    pub fill_ratio_z: Option<f64>,
+
     /// Void ratio (0.30-0.40 for rubble)
+    /// Kept for backward compatibility; computed from fill_ratio and packing_density
     #[serde(default)]
     pub void_ratio: Option<f64>,
 
@@ -219,6 +240,11 @@ impl Default for EstimationResult {
             upper_area: None,
             height: None,
             slope: None,
+            fill_ratio: None,
+            packing_density: None,
+            fill_ratio_l: None,
+            fill_ratio_w: None,
+            fill_ratio_z: None,
             void_ratio: None,
             estimated_volume_m3: 0.0,
             estimated_tonnage: 0.0,
@@ -309,4 +335,18 @@ pub struct BatchResults {
     pub started_at: chrono::DateTime<chrono::Utc>,
     /// Analysis end time
     pub completed_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_fill_ratio_lwz() {
+        let json = r#"{"fillRatioL":0.8,"fillRatioW":0.75,"fillRatioZ":0.9}"#;
+        let result: EstimationResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.fill_ratio_l, Some(0.8));
+        assert_eq!(result.fill_ratio_w, Some(0.75));
+        assert_eq!(result.fill_ratio_z, Some(0.9));
+    }
 }

@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tonsuu_checker::analyzer::{analyze_image, AnalyzerConfig};
+use tonsuu_checker::analyzer::{analyze_image, analyze_image_2step, analyze_image_3step, AnalyzerConfig};
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -39,7 +39,12 @@ struct RunResult {
     upper_area: Option<f64>,
     height: Option<f64>,
     slope: Option<f64>,
+    fill_ratio: Option<f64>,
+    packing_density: Option<f64>,
     void_ratio: Option<f64>,
+    fill_ratio_l: Option<f64>,
+    fill_ratio_w: Option<f64>,
+    fill_ratio_z: Option<f64>,
     // AI final values
     estimated_volume_m3: f64,
     estimated_tonnage: f64,
@@ -50,9 +55,18 @@ struct RunResult {
     error_pct: f64,
 }
 
+#[derive(Debug, Serialize)]
+struct HeightRunResult {
+    file: String,
+    description: String,
+    height: Option<f64>,
+    confidence_score: f64,
+    reasoning: String,
+}
+
 fn default_config() -> AnalyzerConfig {
     AnalyzerConfig::default()
-        .with_model(Some("gemini-2.5-pro".to_string()))
+        .with_model(Some("gemini-3-flash-preview".to_string()))
 }
 
 fn load_ground_truth() -> Vec<GroundTruthEntry> {
@@ -85,7 +99,88 @@ fn run_single(entry: &GroundTruthEntry, config: &AnalyzerConfig) -> RunResult {
         upper_area: result.upper_area,
         height: result.height,
         slope: result.slope,
+        fill_ratio: result.fill_ratio,
+        packing_density: result.packing_density,
         void_ratio: result.void_ratio,
+        fill_ratio_l: result.fill_ratio_l,
+        fill_ratio_w: result.fill_ratio_w,
+        fill_ratio_z: result.fill_ratio_z,
+        estimated_volume_m3: result.estimated_volume_m3,
+        estimated_tonnage: result.estimated_tonnage,
+        confidence_score: result.confidence_score,
+        reasoning: result.reasoning,
+        error,
+        error_pct,
+    }
+}
+
+fn run_single_2step(entry: &GroundTruthEntry, config: &AnalyzerConfig) -> RunResult {
+    let image_path = fixtures_dir().join(&entry.file);
+    assert!(image_path.exists(), "Image not found: {}", image_path.display());
+
+    let result = analyze_image_2step(&image_path, config)
+        .unwrap_or_else(|e| panic!("2-step analysis failed for {}: {}", entry.file, e));
+
+    let error = result.estimated_tonnage - entry.actual_tonnage;
+    let error_pct = if entry.actual_tonnage > 0.0 {
+        (error / entry.actual_tonnage) * 100.0
+    } else {
+        0.0
+    };
+
+    RunResult {
+        file: entry.file.clone(),
+        description: entry.description.clone(),
+        actual_tonnage: entry.actual_tonnage,
+        truck_type: result.truck_type,
+        material_type: result.material_type,
+        upper_area: result.upper_area,
+        height: result.height,
+        slope: result.slope,
+        fill_ratio: result.fill_ratio,
+        packing_density: result.packing_density,
+        void_ratio: result.void_ratio,
+        fill_ratio_l: result.fill_ratio_l,
+        fill_ratio_w: result.fill_ratio_w,
+        fill_ratio_z: result.fill_ratio_z,
+        estimated_volume_m3: result.estimated_volume_m3,
+        estimated_tonnage: result.estimated_tonnage,
+        confidence_score: result.confidence_score,
+        reasoning: result.reasoning,
+        error,
+        error_pct,
+    }
+}
+
+fn run_single_3step(entry: &GroundTruthEntry, config: &AnalyzerConfig) -> RunResult {
+    let image_path = fixtures_dir().join(&entry.file);
+    assert!(image_path.exists(), "Image not found: {}", image_path.display());
+
+    let result = analyze_image_3step(&image_path, config)
+        .unwrap_or_else(|e| panic!("3-step analysis failed for {}: {}", entry.file, e));
+
+    let error = result.estimated_tonnage - entry.actual_tonnage;
+    let error_pct = if entry.actual_tonnage > 0.0 {
+        (error / entry.actual_tonnage) * 100.0
+    } else {
+        0.0
+    };
+
+    RunResult {
+        file: entry.file.clone(),
+        description: entry.description.clone(),
+        actual_tonnage: entry.actual_tonnage,
+        truck_type: result.truck_type,
+        material_type: result.material_type,
+        upper_area: result.upper_area,
+        height: result.height,
+        slope: result.slope,
+        fill_ratio: result.fill_ratio,
+        packing_density: result.packing_density,
+        void_ratio: result.void_ratio,
+        fill_ratio_l: result.fill_ratio_l,
+        fill_ratio_w: result.fill_ratio_w,
+        fill_ratio_z: result.fill_ratio_z,
         estimated_volume_m3: result.estimated_volume_m3,
         estimated_tonnage: result.estimated_tonnage,
         confidence_score: result.confidence_score,
@@ -105,7 +200,12 @@ fn print_result(r: &RunResult) {
     println!("    upper_area:    {:?} m²", r.upper_area);
     println!("    height:        {:?} m", r.height);
     println!("    slope:         {:?}°", r.slope);
+    println!("    fill_ratio:    {:?}", r.fill_ratio);
+    println!("    packing:       {:?}", r.packing_density);
     println!("    void_ratio:    {:?}", r.void_ratio);
+    println!("    fill_ratio_l:  {:?}", r.fill_ratio_l);
+    println!("    fill_ratio_w:  {:?}", r.fill_ratio_w);
+    println!("    fill_ratio_z:  {:?}", r.fill_ratio_z);
     println!("    volume:        {:.2} m³", r.estimated_volume_m3);
     println!("    confidence:    {:.0}%", r.confidence_score * 100.0);
     println!("  結果:");
@@ -118,6 +218,13 @@ fn save_results(results: &[RunResult]) {
     let path = fixtures_dir().join("last_run.json");
     let content = serde_json::to_string_pretty(results).expect("Failed to serialize");
     std::fs::write(&path, content).expect("Failed to write last_run.json");
+    println!("\n結果を保存: {}", path.display());
+}
+
+fn save_height_results(results: &[HeightRunResult]) {
+    let path = fixtures_dir().join("height_last_run.json");
+    let content = serde_json::to_string_pretty(results).expect("Failed to serialize");
+    std::fs::write(&path, content).expect("Failed to write height_last_run.json");
     println!("\n結果を保存: {}", path.display());
 }
 
@@ -157,6 +264,127 @@ fn ground_truth_all() {
     println!("  RMSE:           {:.3} t", rmse);
 
     save_results(&results);
+}
+
+/// 高さのみを記録（合否判定なし）
+#[test]
+#[ignore]
+fn height_only_all() {
+    let entries = load_ground_truth();
+    let config = default_config();
+
+    let mut results = Vec::new();
+
+    println!("\n=== Height Only Test ({} images) ===\n", entries.len());
+
+    for entry in &entries {
+        let image_path = fixtures_dir().join(&entry.file);
+        assert!(image_path.exists(), "Image not found: {}", image_path.display());
+
+        let result = analyze_image(&image_path, &config)
+            .unwrap_or_else(|e| panic!("Analysis failed for {}: {}", entry.file, e));
+
+        let r = HeightRunResult {
+            file: entry.file.clone(),
+            description: entry.description.clone(),
+            height: result.height,
+            confidence_score: result.confidence_score,
+            reasoning: result.reasoning,
+        };
+
+        println!("─────────────────────────────────────");
+        println!("  {}", r.description);
+        println!("  file: {}", r.file);
+        println!("    height:      {:?} m", r.height);
+        println!("    confidence:  {:.0}%", r.confidence_score * 100.0);
+        println!("    reasoning:   {}", r.reasoning);
+
+        results.push(r);
+    }
+
+    save_height_results(&results);
+}
+
+/// 2-step analysis: Step1=height+ID, Step2=rest
+#[test]
+#[ignore]
+fn ground_truth_2step_all() {
+    let entries = load_ground_truth();
+    let config = default_config();
+
+    let mut results = Vec::new();
+
+    println!("\n=== Ground Truth 2-Step Test ({} images) ===\n", entries.len());
+
+    for entry in &entries {
+        let r = run_single_2step(entry, &config);
+        print_result(&r);
+        results.push(r);
+    }
+
+    // Summary
+    println!("\n═══════════════════════════════════════");
+    println!("  2-Step Summary ({} images)", results.len());
+    println!("═══════════════════════════════════════");
+
+    let mean_abs_error: f64 = results.iter().map(|r| r.error.abs()).sum::<f64>() / results.len() as f64;
+    let mean_error: f64 = results.iter().map(|r| r.error).sum::<f64>() / results.len() as f64;
+    let rmse: f64 = (results.iter().map(|r| r.error * r.error).sum::<f64>() / results.len() as f64).sqrt();
+
+    for r in &results {
+        println!("  {:<35} est {:.2}t  act {:.2}t  err {:+.2}t",
+            r.file, r.estimated_tonnage, r.actual_tonnage, r.error);
+    }
+    println!("  ---");
+    println!("  Mean Error:     {:+.3} t", mean_error);
+    println!("  Mean Abs Error: {:.3} t", mean_abs_error);
+    println!("  RMSE:           {:.3} t", rmse);
+
+    let path = fixtures_dir().join("2step_last_run.json");
+    let content = serde_json::to_string_pretty(&results).expect("Failed to serialize");
+    std::fs::write(&path, content).expect("Failed to write");
+    println!("\n結果を保存: {}", path.display());
+}
+
+/// 3-step analysis: Step1=height, Step2=area, Step3=fill
+#[test]
+#[ignore]
+fn ground_truth_3step_all() {
+    let entries = load_ground_truth();
+    let config = default_config();
+
+    let mut results = Vec::new();
+
+    println!("\n=== Ground Truth 3-Step Test ({} images) ===\n", entries.len());
+
+    for entry in &entries {
+        let r = run_single_3step(entry, &config);
+        print_result(&r);
+        results.push(r);
+    }
+
+    // Summary
+    println!("\n═══════════════════════════════════════");
+    println!("  3-Step Summary ({} images)", results.len());
+    println!("═══════════════════════════════════════");
+
+    let mean_abs_error: f64 = results.iter().map(|r| r.error.abs()).sum::<f64>() / results.len() as f64;
+    let mean_error: f64 = results.iter().map(|r| r.error).sum::<f64>() / results.len() as f64;
+    let rmse: f64 = (results.iter().map(|r| r.error * r.error).sum::<f64>() / results.len() as f64).sqrt();
+
+    for r in &results {
+        println!("  {:<35} est {:.2}t  act {:.2}t  err {:+.2}t",
+            r.file, r.estimated_tonnage, r.actual_tonnage, r.error);
+    }
+    println!("  ---");
+    println!("  Mean Error:     {:+.3} t", mean_error);
+    println!("  Mean Abs Error: {:.3} t", mean_abs_error);
+    println!("  RMSE:           {:.3} t", rmse);
+
+    let path = fixtures_dir().join("3step_last_run.json");
+    let content = serde_json::to_string_pretty(&results).expect("Failed to serialize");
+    std::fs::write(&path, content).expect("Failed to write");
+    println!("\n結果を保存: {}", path.display());
 }
 
 // --- Individual tests (run one image at a time) ---
