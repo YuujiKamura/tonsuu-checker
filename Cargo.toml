@@ -15,7 +15,7 @@ path = "src/gui/main.rs"
 
 [dependencies]
 cli-ai-analyzer = { path = "../cli-ai-analyzer" }
-shared-core = { path = "../shared-core" }
+tonsuu-core = { path = "../tonsuu-core" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

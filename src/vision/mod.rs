@@ -414,7 +414,7 @@ fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
     let fill_ratio_w = result.fill_ratio_w.or(result.upper_area).unwrap_or(0.5);
     let fill_ratio_z = result.fill_ratio_z.or(result.fill_ratio).unwrap_or(0.85);
 
-    let params = shared_core::CoreParams {
+    let params = tonsuu_core::CoreParams {
         fill_ratio_w,
         height,
         slope: result.slope.unwrap_or(0.0),
@@ -441,7 +441,7 @@ fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
     };
 
     // shared-core rounds: volume to 3 decimals, tonnage to 2 decimals
-    let calc = shared_core::calculate_tonnage(&params, truck_class.as_deref());
+    let calc = tonsuu_core::calculate_tonnage(&params, truck_class.as_deref());
     result.estimated_volume_m3 = calc.volume;
     result.estimated_tonnage = calc.tonnage;
 
