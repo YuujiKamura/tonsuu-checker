@@ -12,69 +12,22 @@
 //!   後板, ヒンジ, ダンプ)
 
 use std::sync::LazyLock;
-
-/// Typed representation of prompt-spec.json
-#[derive(serde::Deserialize)]
-struct PromptSpec {
-    ranges: Ranges,
-    calculation: Calculation,
-}
-
-#[derive(serde::Deserialize)]
-struct Ranges {
-    #[serde(rename = "upperArea")]
-    upper_area: MinMax,
-    height: HeightRange,
-    slope: MinMax,
-}
-
-#[derive(serde::Deserialize)]
-struct MinMax {
-    min: f64,
-    max: f64,
-}
-
-#[derive(serde::Deserialize)]
-struct HeightRange {
-    min: f64,
-    max: f64,
-    calibration: HeightCalibration,
-}
-
-#[derive(serde::Deserialize)]
-struct HeightCalibration {
-    #[serde(rename = "後板")]
-    back_panel: f64,
-    #[serde(rename = "ヒンジ")]
-    hinge: f64,
-}
-
-#[derive(serde::Deserialize)]
-struct Calculation {
-    #[serde(rename = "defaultBedAreaM2")]
-    default_bed_area_m2: f64,
-}
-
-/// Parsed prompt-spec.json (shared specification)
-static PROMPT_SPEC: LazyLock<PromptSpec> = LazyLock::new(|| {
-    let raw = include_str!("../../../prompt-spec.json");
-    serde_json::from_str(raw).expect("Failed to parse prompt-spec.json")
-});
+use tonsuu_core::spec::SPEC;
 
 // ============================================================================
 // Truck bed dimension constants (meters) - loaded from prompt-spec.json
 // ============================================================================
 
 fn back_panel_height_m() -> f64 {
-    PROMPT_SPEC.ranges.height.calibration.back_panel
+    SPEC.ranges.height.calibration.back_panel
 }
 
 fn hinge_height_m() -> f64 {
-    PROMPT_SPEC.ranges.height.calibration.hinge
+    SPEC.ranges.height.calibration.hinge
 }
 
 fn bed_area_m2() -> f64 {
-    PROMPT_SPEC.calculation.default_bed_area_m2
+    SPEC.calculation.default_bed_area_m2
 }
 
 // ============================================================================
@@ -82,15 +35,15 @@ fn bed_area_m2() -> f64 {
 // ============================================================================
 
 fn upper_area_range() -> (f64, f64) {
-    (PROMPT_SPEC.ranges.upper_area.min, PROMPT_SPEC.ranges.upper_area.max)
+    (SPEC.ranges.upper_area.min, SPEC.ranges.upper_area.max)
 }
 
 fn height_range() -> (f64, f64) {
-    (PROMPT_SPEC.ranges.height.min, PROMPT_SPEC.ranges.height.max)
+    (SPEC.ranges.height.min, SPEC.ranges.height.max)
 }
 
 fn slope_range() -> (f64, f64) {
-    (PROMPT_SPEC.ranges.slope.min, PROMPT_SPEC.ranges.slope.max)
+    (SPEC.ranges.slope.min, SPEC.ranges.slope.max)
 }
 
 /// Fill ratio range (0.7~1.0): how well the pile silhouette fills the frustum shape
@@ -183,10 +136,10 @@ fn build_range_guide() -> String {
             "後板(テールゲート上縁)={bp:.2}m, ヒンジ金具={hi:.2}m。",
             "荷山の最高点がどちらの目印の何cm上/下かを見て数値化せよ) ",
             "slope({s_min:.1}~{s_max:.1}, 荷山の前後方向の高低差m: 手前が低ければ正値) ",
-            "fillRatioL(0.7~1.0, 長さ方向の充填率: 荷台の前後方向にどこまで積まれているか) ",
-            "fillRatioW(0.7~1.0, 幅方向の充填率: 荷台の左右方向にどこまで積まれているか) ",
-            "fillRatioZ(0.7~1.0, 高さ方向の充填率: 錐台形状に対して山がどこまで埋まっているか) ",
-            "packingDensity(0.7~0.9, ガラの詰まり具合) ",
+            "fillRatioL({frl_min:.1}~{frl_max:.1}, 長さ方向の充填率: 荷台の前後方向にどこまで積まれているか) ",
+            "fillRatioW({frw_min:.1}~{frw_max:.1}, 幅方向の充填率: 荷台の左右方向にどこまで積まれているか) ",
+            "fillRatioZ({frz_min:.1}~{frz_max:.1}, 高さ方向の充填率: 錐台形状に対して山がどこまで埋まっているか) ",
+            "packingDensity({pd_min:.1}~{pd_max:.1}, ガラの詰まり具合) ",
             "※fillRatioL/W/Zはそれぞれ独立して推定すること"
         ),
         ua_min = upper_area_range().0,
@@ -197,6 +150,14 @@ fn build_range_guide() -> String {
         hi = hinge_height_m(),
         s_min = slope_range().0,
         s_max = slope_range().1,
+        frl_min = SPEC.ranges.fill_ratio_l.min,
+        frl_max = SPEC.ranges.fill_ratio_l.max,
+        frw_min = SPEC.ranges.fill_ratio_w.min,
+        frw_max = SPEC.ranges.fill_ratio_w.max,
+        frz_min = SPEC.ranges.fill_ratio_z.min,
+        frz_max = SPEC.ranges.fill_ratio_z.max,
+        pd_min = SPEC.ranges.packing_density.min,
+        pd_max = SPEC.ranges.packing_density.max,
     )
 }
 
@@ -439,10 +400,10 @@ pub fn build_step2_rest_prompt(height: f64, truck_type: &str, material_type: &st
             "Estimate remaining: ",
             "upperArea({ua_min:.1}~{ua_max:.1}) ",
             "slope({s_min:.1}~{s_max:.1}, 荷山の前後高低差m) ",
-            "fillRatioL(0.7~1.0, 長さ方向) ",
-            "fillRatioW(0.7~1.0, 幅方向) ",
-            "fillRatioZ(0.7~1.0, 高さ方向) ",
-            "packingDensity(0.7~0.9, ガラの詰まり具合) ",
+            "fillRatioL({frl_min:.1}~{frl_max:.1}, 長さ方向) ",
+            "fillRatioW({frw_min:.1}~{frw_max:.1}, 幅方向) ",
+            "fillRatioZ({frz_min:.1}~{frz_max:.1}, 高さ方向) ",
+            "packingDensity({pd_min:.1}~{pd_max:.1}, ガラの詰まり具合) ",
             "※fillRatioL/W/Zはそれぞれ独立して推定すること"
         ),
         height = height,
@@ -452,6 +413,14 @@ pub fn build_step2_rest_prompt(height: f64, truck_type: &str, material_type: &st
         ua_max = upper_area_range().1,
         s_min = slope_range().0,
         s_max = slope_range().1,
+        frl_min = SPEC.ranges.fill_ratio_l.min,
+        frl_max = SPEC.ranges.fill_ratio_l.max,
+        frw_min = SPEC.ranges.fill_ratio_w.min,
+        frw_max = SPEC.ranges.fill_ratio_w.max,
+        frz_min = SPEC.ranges.fill_ratio_z.min,
+        frz_max = SPEC.ranges.fill_ratio_z.max,
+        pd_min = SPEC.ranges.packing_density.min,
+        pd_max = SPEC.ranges.packing_density.max,
     )
 }
 
@@ -502,14 +471,22 @@ pub fn build_step3_fill_prompt(height: f64, upper_area: f64) -> String {
             "\"reasoning\":\"describe what you see\"}} ",
             "The cargo height is {height:.2}m, upperArea is {ua:.2}. ",
             "Estimate: ",
-            "fillRatioL(0.7~1.0, 長さ方向) ",
-            "fillRatioW(0.7~1.0, 幅方向) ",
-            "fillRatioZ(0.7~1.0, 高さ方向) ",
-            "packingDensity(0.7~0.9, ガラの詰まり具合) ",
+            "fillRatioL({frl_min:.1}~{frl_max:.1}, 長さ方向) ",
+            "fillRatioW({frw_min:.1}~{frw_max:.1}, 幅方向) ",
+            "fillRatioZ({frz_min:.1}~{frz_max:.1}, 高さ方向) ",
+            "packingDensity({pd_min:.1}~{pd_max:.1}, ガラの詰まり具合) ",
             "※fillRatioL/W/Zはそれぞれ独立して推定すること"
         ),
         height = height,
         ua = upper_area,
+        frl_min = SPEC.ranges.fill_ratio_l.min,
+        frl_max = SPEC.ranges.fill_ratio_l.max,
+        frw_min = SPEC.ranges.fill_ratio_w.min,
+        frw_max = SPEC.ranges.fill_ratio_w.max,
+        frz_min = SPEC.ranges.fill_ratio_z.min,
+        frz_max = SPEC.ranges.fill_ratio_z.max,
+        pd_min = SPEC.ranges.packing_density.min,
+        pd_max = SPEC.ranges.packing_density.max,
     )
 }
 
@@ -710,17 +687,24 @@ mod tests {
 
     #[test]
     fn test_build_estimation_prompt_no_duplication_drift() {
-        // Both prompts should use the same range constants
+        // Both prompts should use the same range constants from SPEC
         let base = &*VOLUME_ESTIMATION_PROMPT;
         let est = build_estimation_prompt("X", "Y");
-        assert!(base.contains("upperArea(0.2~0.6)"));
-        assert!(est.contains("upperArea(0.2~0.6)"));
-        assert!(base.contains("fillRatioL(0.7~1.0"));
-        assert!(base.contains("fillRatioW(0.7~1.0"));
-        assert!(base.contains("fillRatioZ(0.7~1.0"));
-        assert!(est.contains("fillRatioL(0.7~1.0"));
-        assert!(est.contains("fillRatioW(0.7~1.0"));
-        assert!(est.contains("fillRatioZ(0.7~1.0"));
+        let ua_str = format!("upperArea({:.1}~{:.1})", SPEC.ranges.upper_area.min, SPEC.ranges.upper_area.max);
+        assert!(base.contains(&ua_str));
+        assert!(est.contains(&ua_str));
+        let frl_str = format!("fillRatioL({:.1}~{:.1}", SPEC.ranges.fill_ratio_l.min, SPEC.ranges.fill_ratio_l.max);
+        let frw_str = format!("fillRatioW({:.1}~{:.1}", SPEC.ranges.fill_ratio_w.min, SPEC.ranges.fill_ratio_w.max);
+        let frz_str = format!("fillRatioZ({:.1}~{:.1}", SPEC.ranges.fill_ratio_z.min, SPEC.ranges.fill_ratio_z.max);
+        assert!(base.contains(&frl_str));
+        assert!(base.contains(&frw_str));
+        assert!(base.contains(&frz_str));
+        assert!(est.contains(&frl_str));
+        assert!(est.contains(&frw_str));
+        assert!(est.contains(&frz_str));
+        let pd_str = format!("packingDensity({:.1}~{:.1}", SPEC.ranges.packing_density.min, SPEC.ranges.packing_density.max);
+        assert!(base.contains(&pd_str));
+        assert!(est.contains(&pd_str));
     }
 
     #[test]
