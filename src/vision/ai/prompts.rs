@@ -651,26 +651,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_constants_consistent() {
-        // bed_area_m2 should match prompt-spec.json defaultBedAreaM2
-        let expected = 6.8;
-        assert!(
-            (bed_area_m2() - expected).abs() < f64::EPSILON,
-            "bed_area_m2() ({}) != {} (from prompt-spec.json)",
-            bed_area_m2(),
-            expected
-        );
-        // Calibration constants should match
-        assert!((back_panel_height_m() - 0.3).abs() < f64::EPSILON);
-        assert!((hinge_height_m() - 0.5).abs() < f64::EPSILON);
+    fn test_constants_from_prompt_spec() {
+        // All values should be read from prompt-spec.json (SSOT) — no hardcoded expectations
+        let bp = back_panel_height_m();
+        let hi = hinge_height_m();
+        let area = bed_area_m2();
+        // Sanity: values should be positive and within reasonable physical bounds
+        assert!(bp > 0.0 && bp < 1.0, "back_panel {bp} out of range");
+        assert!(hi > 0.0 && hi < 1.0, "hinge {hi} out of range");
+        assert!(area > 1.0 && area < 20.0, "bed_area {area} out of range");
+        // Hinge should be higher than back panel
+        assert!(hi > bp, "hinge ({hi}) should be higher than back_panel ({bp})");
     }
 
     #[test]
     fn test_volume_estimation_prompt_contains_dimensions() {
         let prompt = &*VOLUME_ESTIMATION_PROMPT;
-        // Scale reference constants must appear in the prompt text
-        assert!(prompt.contains("後板(テールゲート上縁)=0.30m"), "missing 後板上端 height");
-        assert!(prompt.contains("ヒンジ金具=0.50m"), "missing ヒンジ height");
+        // Scale reference constants from prompt-spec.json must appear in the prompt text
+        let bp_str = format!("後板(テールゲート上縁)={:.2}m", back_panel_height_m());
+        let hi_str = format!("ヒンジ金具={:.2}m", hinge_height_m());
+        assert!(prompt.contains(&bp_str), "missing 後板上端 height: expected {bp_str}");
+        assert!(prompt.contains(&hi_str), "missing ヒンジ height: expected {hi_str}");
         // Height should request 0.05m step estimation
         assert!(prompt.contains("0.05m刻み"), "missing 0.05m step instruction");
     }
@@ -700,9 +701,11 @@ mod tests {
         let prompt = build_estimation_prompt("4tダンプ", "アスファルト殻");
         assert!(prompt.contains("4tダンプ"));
         assert!(prompt.contains("アスファルト殻"));
-        // Contains range references
-        assert!(prompt.contains("後板(テールゲート上縁)=0.30m"), "missing 後板上端 height in estimation prompt");
-        assert!(prompt.contains("ヒンジ金具=0.50m"), "missing ヒンジ height in estimation prompt");
+        // Contains range references from prompt-spec.json
+        let bp_str = format!("後板(テールゲート上縁)={:.2}m", back_panel_height_m());
+        let hi_str = format!("ヒンジ金具={:.2}m", hinge_height_m());
+        assert!(prompt.contains(&bp_str), "missing 後板上端 height in estimation prompt");
+        assert!(prompt.contains(&hi_str), "missing ヒンジ height in estimation prompt");
     }
 
     #[test]
@@ -839,8 +842,10 @@ mod tests {
     #[test]
     fn test_step1_height_prompt_contains_references() {
         let prompt = build_step1_height_prompt();
-        assert!(prompt.contains("後板(テールゲート上縁)=0.30m"));
-        assert!(prompt.contains("ヒンジ金具=0.50m"));
+        let bp_str = format!("後板(テールゲート上縁)={:.2}m", back_panel_height_m());
+        let hi_str = format!("ヒンジ金具={:.2}m", hinge_height_m());
+        assert!(prompt.contains(&bp_str), "missing {bp_str}");
+        assert!(prompt.contains(&hi_str), "missing {hi_str}");
         assert!(prompt.contains("0.05m"));
         assert!(prompt.contains("height"));
         // Should NOT contain fillRatio fields
