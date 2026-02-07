@@ -440,7 +440,7 @@ fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
         if cls.is_empty() { None } else { Some(cls) }
     };
 
-    // shared-core rounds: volume to 3 decimals, tonnage to 2 decimals
+    // tonsuu-core rounds: volume to 3 decimals, tonnage to 2 decimals
     let calc = tonsuu_core::calculate_tonnage(&params, truck_class.as_deref());
     result.estimated_volume_m3 = calc.volume;
     result.estimated_tonnage = calc.tonnage;
