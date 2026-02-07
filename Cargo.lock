@@ -3784,6 +3784,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "shared-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "shell-words"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4245,6 +4253,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "shared-core",
  "shell-words",
  "tempfile",
  "thiserror 2.0.18",

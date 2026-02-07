@@ -404,42 +404,49 @@ fn parse_response(response: &str) -> Result<EstimationResult> {
     Ok(result)
 }
 
-/// Calculate volume and tonnage from estimated parameters
-/// Formula: 体積 = (upperArea + lowerArea) / 2 × height
-///          重量 = 体積 × 密度 × fillRatioZ × packingDensity
-/// fillRatioW → upper_area proxy, fillRatioZ → vertical fill ratio
+/// Calculate volume and tonnage from estimated parameters using shared-core
 fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
-    const LOWER_AREA: f64 = 6.8; // 4tダンプ底面積 (m²)
+    let height = result.height.unwrap_or(0.0);
+    if height <= 0.0 {
+        return;
+    }
 
-    // Get density from material type
-    let density = match result.material_type.as_str() {
-        s if s.contains("土砂") => 1.8,
-        _ => 2.5, // As殻/Co殻 default
+    let fill_ratio_w = result.fill_ratio_w.or(result.upper_area).unwrap_or(0.5);
+    let fill_ratio_z = result.fill_ratio_z.or(result.fill_ratio).unwrap_or(0.85);
+
+    let params = shared_core::CoreParams {
+        fill_ratio_w,
+        height,
+        slope: result.slope.unwrap_or(0.0),
+        fill_ratio_z,
+        packing_density: result.packing_density.unwrap_or(0.80),
+        material_type: result.material_type.clone(),
     };
 
-    // Get parameters with defaults
-    // Use fillRatioW as upper-area proxy if available, fallback to upper_area
-    let upper_area_ratio = result.fill_ratio_w.or(result.upper_area).unwrap_or(0.5);
-    let upper_area = upper_area_ratio * LOWER_AREA;
-    let height = result.height.unwrap_or(0.0);
-    let slope = result.slope.unwrap_or(0.0);
-    // Use fillRatioZ as vertical fill if available, fallback to fill_ratio
-    let fill_ratio = result.fill_ratio_z.or(result.fill_ratio).unwrap_or(0.85);
-    let packing_density = result.packing_density.unwrap_or(0.80);
+    // Extract truck class (e.g., "4t" from "4tダンプ", "4tダンプ(土砂)" etc.)
+    // shared-core defaults to 6.8m² (4t bed area) when class is None
+    let truck_class = if result.truck_type.is_empty()
+        || result.truck_type == "?"
+        || result.truck_type == "？"
+    {
+        None
+    } else {
+        let cls = result.truck_type
+            .split(|c: char| c == 'ダ' || c == '(' || c == '（')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if cls.is_empty() { None } else { Some(cls) }
+    };
 
-    // Calculate
-    // slope: 手前が下がっている落差 → 平均高さを slope/2 分だけ減ずる
-    if height > 0.0 {
-        let effective_height = (height - slope / 2.0).max(0.0);
-        let volume = (upper_area + LOWER_AREA) / 2.0 * effective_height;
-        let tonnage = volume * density * fill_ratio * packing_density;
+    // shared-core rounds: volume to 3 decimals, tonnage to 2 decimals
+    let calc = shared_core::calculate_tonnage(&params, truck_class.as_deref());
+    result.estimated_volume_m3 = calc.volume;
+    result.estimated_tonnage = calc.tonnage;
 
-        result.estimated_volume_m3 = (volume * 100.0).round() / 100.0; // Round to 2 decimals
-        result.estimated_tonnage = (tonnage * 100.0).round() / 100.0;
-
-        // Compute void_ratio for backward compatibility
-        result.void_ratio = Some(1.0 - fill_ratio * packing_density);
-    }
+    // Compute void_ratio for backward compatibility
+    result.void_ratio = Some(1.0 - fill_ratio_z * params.packing_density);
 }
 
 /// Extract JSON from response (handles markdown code blocks)
