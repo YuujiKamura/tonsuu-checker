@@ -1,0 +1,53 @@
+{
+  "version": "1.0.0",
+  "jsonTemplate": {
+    "isTargetDetected": true,
+    "truckType": "?",
+    "licensePlate": null,
+    "materialType": "?",
+    "upperArea": 0,
+    "height": 0,
+    "slope": 0,
+    "packingDensity": 0,
+    "fillRatioL": 0,
+    "fillRatioW": 0,
+    "fillRatioZ": 0,
+    "confidenceScore": 0,
+    "reasoning": "describe what you see"
+  },
+  "ranges": {
+    "upperArea": { "min": 0.2, "max": 0.6 },
+    "height": {
+      "min": 0.0, "max": 0.6, "step": 0.05,
+      "calibration": { "後板": 0.30, "ヒンジ": 0.50 }
+    },
+    "slope": { "min": 0.0, "max": 0.3 },
+    "fillRatioL": { "min": 0.7, "max": 1.0 },
+    "fillRatioW": { "min": 0.7, "max": 1.0 },
+    "fillRatioZ": { "min": 0.7, "max": 1.0 },
+    "packingDensity": { "min": 0.7, "max": 0.9 }
+  },
+  "rangeGuide": "upperArea(0.2~0.6) height(0.0~0.6, 0.05m刻みで推定せよ。後板(テールゲート上縁)=0.30m, ヒンジ金具=0.50m。荷山の最高点がどちらの目印の何cm上/下かを見て数値化せよ) slope(0.0~0.3, 荷山の前後方向の高低差m: 手前が低ければ正値) fillRatioL(0.7~1.0, 長さ方向の充填率) fillRatioW(0.7~1.0, 幅方向の充填率) fillRatioZ(0.7~1.0, 高さ方向の充填率) packingDensity(0.7~0.9, ガラの詰まり具合) ※fillRatioL/W/Zはそれぞれ独立して推定すること",
+  "promptFormat": "Output ONLY JSON: {jsonTemplate} Adjust each value based on the image: {rangeGuide}",
+  "calculation": {
+    "defaultBedAreaM2": 6.8,
+    "formula": {
+      "upperAreaM2": "fillRatioW * bedAreaM2",
+      "effectiveHeight": "max(height - slope / 2, 0)",
+      "volume": "(upperAreaM2 + bedAreaM2) / 2 * effectiveHeight",
+      "tonnage": "volume * density * fillRatioZ * packingDensity"
+    }
+  },
+  "materials": {
+    "土砂": { "density": 1.8 },
+    "As殻": { "density": 2.5 },
+    "Co殻": { "density": 2.5 },
+    "開粒度As殻": { "density": 2.35 }
+  },
+  "truckSpecs": {
+    "2t":  { "bedLength": 3.0, "bedWidth": 1.6, "bedHeight": 0.32, "levelVolume": 1.5, "heapVolume": 2.0, "maxCapacity": 2.0 },
+    "4t":  { "bedLength": 3.4, "bedWidth": 2.06, "bedHeight": 0.32, "levelVolume": 2.2, "heapVolume": 2.9, "maxCapacity": 4.0 },
+    "増トン": { "bedLength": 4.0, "bedWidth": 2.2, "bedHeight": 0.40, "levelVolume": 3.5, "heapVolume": 4.6, "maxCapacity": 6.5 },
+    "10t": { "bedLength": 5.3, "bedWidth": 2.3, "bedHeight": 0.50, "levelVolume": 6.0, "heapVolume": 7.8, "maxCapacity": 10.0 }
+  }
+}

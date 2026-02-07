@@ -11,31 +11,87 @@
 //! - Japanese for domain-specific terms (アスファルト殻, コンクリート殻, 土砂,
 //!   後板, ヒンジ, ダンプ)
 
+use std::sync::LazyLock;
+
+/// Typed representation of prompt-spec.json
+#[derive(serde::Deserialize)]
+struct PromptSpec {
+    ranges: Ranges,
+    calculation: Calculation,
+}
+
+#[derive(serde::Deserialize)]
+struct Ranges {
+    #[serde(rename = "upperArea")]
+    upper_area: MinMax,
+    height: HeightRange,
+    slope: MinMax,
+}
+
+#[derive(serde::Deserialize)]
+struct MinMax {
+    min: f64,
+    max: f64,
+}
+
+#[derive(serde::Deserialize)]
+struct HeightRange {
+    min: f64,
+    max: f64,
+    calibration: HeightCalibration,
+}
+
+#[derive(serde::Deserialize)]
+struct HeightCalibration {
+    #[serde(rename = "後板")]
+    back_panel: f64,
+    #[serde(rename = "ヒンジ")]
+    hinge: f64,
+}
+
+#[derive(serde::Deserialize)]
+struct Calculation {
+    #[serde(rename = "defaultBedAreaM2")]
+    default_bed_area_m2: f64,
+}
+
+/// Parsed prompt-spec.json (shared specification)
+static PROMPT_SPEC: LazyLock<PromptSpec> = LazyLock::new(|| {
+    let raw = include_str!("../../../prompt-spec.json");
+    serde_json::from_str(raw).expect("Failed to parse prompt-spec.json")
+});
+
 // ============================================================================
-// Truck bed dimension constants (meters)
+// Truck bed dimension constants (meters) - loaded from prompt-spec.json
 // ============================================================================
 
-/// Height of the back panel / tailgate top edge (後板) in meters
-const BACK_PANEL_HEIGHT_M: f64 = 0.3;
+fn back_panel_height_m() -> f64 {
+    PROMPT_SPEC.ranges.height.calibration.back_panel
+}
 
-/// Height of the hinge (ヒンジ) from the bed floor in meters
-const HINGE_HEIGHT_M: f64 = 0.5;
+fn hinge_height_m() -> f64 {
+    PROMPT_SPEC.ranges.height.calibration.hinge
+}
 
-/// Truck bed floor area in square meters (3.4m x 2.0m)
-const BED_AREA_M2: f64 = 6.8;
+fn bed_area_m2() -> f64 {
+    PROMPT_SPEC.calculation.default_bed_area_m2
+}
 
 // ============================================================================
 // Estimation range constants
 // ============================================================================
 
-/// Upper area estimation range (fraction of bed area)
-const UPPER_AREA_RANGE: (f64, f64) = (0.2, 0.6);
+fn upper_area_range() -> (f64, f64) {
+    (PROMPT_SPEC.ranges.upper_area.min, PROMPT_SPEC.ranges.upper_area.max)
+}
 
-/// Height estimation range in meters
-const HEIGHT_RANGE: (f64, f64) = (0.0, 0.6);
+fn height_range() -> (f64, f64) {
+    (PROMPT_SPEC.ranges.height.min, PROMPT_SPEC.ranges.height.max)
+}
 
-/// Slope estimation range in meters
-const SLOPE_RANGE: (f64, f64) = (0.0, 0.3);
+fn slope_range() -> (f64, f64) {
+    (PROMPT_SPEC.ranges.slope.min, PROMPT_SPEC.ranges.slope.max)
+}
 
 /// Fill ratio range (0.7~1.0): how well the pile silhouette fills the frustum shape
 /// Packing density range (0.7~0.9): how tightly debris pieces are packed together
@@ -101,9 +157,9 @@ fn build_karte_observation_guide() -> String {
             "Replace every <estimate...> placeholder with your numeric estimate. ",
             "Write your visual observations in reasoning."
         ),
-        back_panel = BACK_PANEL_HEIGHT_M,
-        hinge = HINGE_HEIGHT_M,
-        area = BED_AREA_M2,
+        back_panel = back_panel_height_m(),
+        hinge = hinge_height_m(),
+        area = bed_area_m2(),
     )
 }
 
@@ -133,14 +189,14 @@ fn build_range_guide() -> String {
             "packingDensity(0.7~0.9, ガラの詰まり具合) ",
             "※fillRatioL/W/Zはそれぞれ独立して推定すること"
         ),
-        ua_min = UPPER_AREA_RANGE.0,
-        ua_max = UPPER_AREA_RANGE.1,
-        h_min = HEIGHT_RANGE.0,
-        h_max = HEIGHT_RANGE.1,
-        bp = BACK_PANEL_HEIGHT_M,
-        hi = HINGE_HEIGHT_M,
-        s_min = SLOPE_RANGE.0,
-        s_max = SLOPE_RANGE.1,
+        ua_min = upper_area_range().0,
+        ua_max = upper_area_range().1,
+        h_min = height_range().0,
+        h_max = height_range().1,
+        bp = back_panel_height_m(),
+        hi = hinge_height_m(),
+        s_min = slope_range().0,
+        s_max = slope_range().1,
     )
 }
 
@@ -169,8 +225,8 @@ fn build_volume_estimation_prompt() -> String {
 /// NOTE: This is a `static` string built once via `std::sync::LazyLock`.
 /// All dimension constants (後板, ヒンジ, bed size) are injected from the
 /// module-level constants so they are defined in one place.
-pub static VOLUME_ESTIMATION_PROMPT: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(build_volume_estimation_prompt);
+pub static VOLUME_ESTIMATION_PROMPT: LazyLock<String> =
+    LazyLock::new(build_volume_estimation_prompt);
 
 /// Graded reference item for prompt building (used by staged analysis)
 pub struct GradedReferenceItem {
@@ -365,8 +421,8 @@ pub fn build_step1_height_prompt() -> String {
             "後板(テールゲート上縁)={bp:.2}m, ヒンジ金具={hi:.2}m。",
             "荷山の最高点がどちらの目印の何cm上/下かを見て数値化せよ"
         ),
-        bp = BACK_PANEL_HEIGHT_M,
-        hi = HINGE_HEIGHT_M,
+        bp = back_panel_height_m(),
+        hi = hinge_height_m(),
     )
 }
 
@@ -392,10 +448,10 @@ pub fn build_step2_rest_prompt(height: f64, truck_type: &str, material_type: &st
         height = height,
         truck_type = truck_type,
         material_type = material_type,
-        ua_min = UPPER_AREA_RANGE.0,
-        ua_max = UPPER_AREA_RANGE.1,
-        s_min = SLOPE_RANGE.0,
-        s_max = SLOPE_RANGE.1,
+        ua_min = upper_area_range().0,
+        ua_max = upper_area_range().1,
+        s_min = slope_range().0,
+        s_max = slope_range().1,
     )
 }
 
@@ -410,8 +466,8 @@ pub fn build_step1_height_only_prompt() -> String {
             "荷山の最高点がどちらの目印の何cm上/下かを見て数値化せよ。",
             "Focus exclusively on height measurement."
         ),
-        bp = BACK_PANEL_HEIGHT_M,
-        hi = HINGE_HEIGHT_M,
+        bp = back_panel_height_m(),
+        hi = hinge_height_m(),
     )
 }
 
@@ -428,11 +484,11 @@ pub fn build_step2_area_prompt(height: f64) -> String {
             "slope({s_min:.1}~{s_max:.1}, 荷山の前後高低差m)"
         ),
         height = height,
-        ua_min = UPPER_AREA_RANGE.0,
-        ua_max = UPPER_AREA_RANGE.1,
-        area = BED_AREA_M2,
-        s_min = SLOPE_RANGE.0,
-        s_max = SLOPE_RANGE.1,
+        ua_min = upper_area_range().0,
+        ua_max = upper_area_range().1,
+        area = bed_area_m2(),
+        s_min = slope_range().0,
+        s_max = slope_range().1,
     )
 }
 
@@ -596,14 +652,17 @@ mod tests {
 
     #[test]
     fn test_constants_consistent() {
-        // BED_AREA_M2 should equal 3.4m * 2.0m
-        let expected = 3.4 * 2.0;
+        // bed_area_m2 should match prompt-spec.json defaultBedAreaM2
+        let expected = 6.8;
         assert!(
-            (BED_AREA_M2 - expected).abs() < f64::EPSILON,
-            "BED_AREA_M2 ({}) != 3.4 * 2.0 ({})",
-            BED_AREA_M2,
+            (bed_area_m2() - expected).abs() < f64::EPSILON,
+            "bed_area_m2() ({}) != {} (from prompt-spec.json)",
+            bed_area_m2(),
             expected
         );
+        // Calibration constants should match
+        assert!((back_panel_height_m() - 0.3).abs() < f64::EPSILON);
+        assert!((hinge_height_m() - 0.5).abs() < f64::EPSILON);
     }
 
     #[test]
