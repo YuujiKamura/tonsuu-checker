@@ -4,7 +4,7 @@
     "isTargetDetected": true,
     "truckType": "?",
     "licensePlate": null,
-    "materialType": "?",
+    "materialType": "As殻",
     "upperArea": 0,
     "height": 0,
     "slope": 0,
@@ -25,9 +25,9 @@
     "fillRatioL": { "min": 0.7, "max": 1.0 },
     "fillRatioW": { "min": 0.7, "max": 1.0 },
     "fillRatioZ": { "min": 0.7, "max": 1.0 },
-    "packingDensity": { "min": 0.7, "max": 0.9 }
+    "packingDensity": { "min": 0.5, "max": 0.9 }
   },
-  "rangeGuide": "upperArea(0.2~0.6) height(0.0~0.6, 0.05m刻みで推定せよ。後板(テールゲート上縁)=0.30m, ヒンジ金具=0.50m。荷山の最高点がどちらの目印の何cm上/下かを見て数値化せよ) slope(0.0~0.3, 荷山の前後方向の高低差m: 手前が低ければ正値) fillRatioL(0.7~1.0, 長さ方向の充填率) fillRatioW(0.7~1.0, 幅方向の充填率) fillRatioZ(0.7~1.0, 高さ方向の充填率) packingDensity(0.7~0.9, ガラの詰まり具合) ※fillRatioL/W/Zはそれぞれ独立して推定すること",
+  "rangeGuide": "upperArea(0.2~0.6) height(0.0~0.6, 0.05m刻みで推定せよ。後板(テールゲート上縁)=0.30m, ヒンジ金具=0.50m。荷山の最高点がどちらの目印の何cm上/下かを見て数値化せよ) slope(0.0~0.3, 荷山の前後方向の高低差m: 手前が低ければ正値) fillRatioL(0.7~1.0, 長さ方向の充填率) fillRatioW(0.7~1.0, 幅方向の充填率) fillRatioZ(0.7~1.0, 高さ方向の充填率) packingDensity(0.5~0.9, As殻=アスファルト舗装版(厚さ約5cm)の破砕物。板状破片が斜めに噛み合い隙間が多い=0.5付近、一般的な積載=0.7付近、自重で締まっている/丁寧に積み上げ=0.9付近。破片サイズが大きいほど・雑に投げ込むほど空隙が増え値が下がる) ※fillRatioL/W/Zはそれぞれ独立して推定すること ※materialTypeはAs殻固定、変更不要",
   "promptFormat": "Output ONLY JSON: {jsonTemplate} Adjust each value based on the image: {rangeGuide}",
   "calculation": {
     "defaultBedAreaM2": 6.8,
