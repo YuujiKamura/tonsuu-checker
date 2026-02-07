@@ -38,35 +38,9 @@ fn upper_area_range() -> (f64, f64) {
     (SPEC.ranges.upper_area.min, SPEC.ranges.upper_area.max)
 }
 
-fn height_range() -> (f64, f64) {
-    (SPEC.ranges.height.min, SPEC.ranges.height.max)
-}
-
 fn slope_range() -> (f64, f64) {
     (SPEC.ranges.slope.min, SPEC.ranges.slope.max)
 }
-
-/// Fill ratio range (0.7~1.0): how well the pile silhouette fills the frustum shape
-/// Packing density range (0.7~0.9): how tightly debris pieces are packed together
-
-// ============================================================================
-// JSON field name constants
-// ============================================================================
-
-const KEY_UPPER_AREA: &str = "upperArea";
-const KEY_HEIGHT: &str = "height";
-const KEY_SLOPE: &str = "slope";
-const KEY_FILL_RATIO: &str = "fillRatio";
-const KEY_PACKING_DENSITY: &str = "packingDensity";
-const KEY_FILL_RATIO_L: &str = "fillRatioL";
-const KEY_FILL_RATIO_W: &str = "fillRatioW";
-const KEY_FILL_RATIO_Z: &str = "fillRatioZ";
-const KEY_CONFIDENCE_SCORE: &str = "confidenceScore";
-const KEY_REASONING: &str = "reasoning";
-const KEY_IS_TARGET_DETECTED: &str = "isTargetDetected";
-const KEY_LICENSE_PLATE: &str = "licensePlate";
-const KEY_TRUCK_TYPE: &str = "truckType";
-const KEY_MATERIAL_TYPE: &str = "materialType";
 
 // ============================================================================
 // Shared prompt fragments (used by multiple prompt builders)
@@ -77,21 +51,12 @@ const KEY_MATERIAL_TYPE: &str = "materialType";
 /// This shared function creates the core JSON structure that both
 /// build_json_output_instruction and build_estimation_prompt use.
 fn build_base_json_template(truck_type: &str, material_type: &str) -> serde_json::Value {
-    serde_json::json!({
-        KEY_IS_TARGET_DETECTED: true,
-        KEY_TRUCK_TYPE: truck_type,
-        KEY_LICENSE_PLATE: null,
-        KEY_MATERIAL_TYPE: material_type,
-        KEY_UPPER_AREA: 0,
-        KEY_HEIGHT: 0,
-        KEY_SLOPE: 0,
-        KEY_PACKING_DENSITY: 0,
-        KEY_FILL_RATIO_L: 0,
-        KEY_FILL_RATIO_W: 0,
-        KEY_FILL_RATIO_Z: 0,
-        KEY_CONFIDENCE_SCORE: 0,
-        KEY_REASONING: "describe what you see"
-    })
+    let mut tmpl = SPEC.json_template.clone();
+    if let Some(obj) = tmpl.as_object_mut() {
+        obj.insert("truckType".to_string(), serde_json::json!(truck_type));
+        obj.insert("materialType".to_string(), serde_json::json!(material_type));
+    }
+    tmpl
 }
 
 /// Build the karte-mode observation guide.
@@ -116,40 +81,16 @@ fn build_karte_observation_guide() -> String {
     )
 }
 
-// ============================================================================
-// Volume estimation prompt (the main prompt)
-// ============================================================================
-
-/// Build the shared range guide string for numeric parameters.
-///
-/// Provides concrete visual criteria for each parameter so the AI
-/// can distinguish fillRatio from packingDensity independently.
-///
-/// Height calibration: The prompt forces the AI to judge pile height
-/// relative to two visible landmarks (後板 top = 0.3m, ヒンジ = 0.5m)
-/// and estimate in 0.05m steps for finer discrimination.
-fn build_range_guide() -> String {
+/// fillRatio + packingDensity range description fragment (shared by step2/step3)
+fn fill_packing_guide() -> String {
     format!(
         concat!(
-            "upperArea({ua_min:.1}~{ua_max:.1}) ",
-            "height({h_min:.2}~{h_max:.2}, 0.05m刻みで推定せよ。",
-            "後板(テールゲート上縁)={bp:.2}m, ヒンジ金具={hi:.2}m。",
-            "荷山の最高点がどちらの目印の何cm上/下かを見て数値化せよ) ",
-            "slope({s_min:.1}~{s_max:.1}, 荷山の前後方向の高低差m: 手前が低ければ正値) ",
-            "fillRatioL({frl_min:.1}~{frl_max:.1}, 長さ方向の充填率: 荷台の前後方向にどこまで積まれているか) ",
-            "fillRatioW({frw_min:.1}~{frw_max:.1}, 幅方向の充填率: 荷台の左右方向にどこまで積まれているか) ",
-            "fillRatioZ({frz_min:.1}~{frz_max:.1}, 高さ方向の充填率: 錐台形状に対して山がどこまで埋まっているか) ",
-            "packingDensity({pd_min:.1}~{pd_max:.1}, ガラの詰まり具合) ",
+            "fillRatioL({frl_min:.1}~{frl_max:.1}, 長さ方向の充填率) ",
+            "fillRatioW({frw_min:.1}~{frw_max:.1}, 幅方向の充填率) ",
+            "fillRatioZ({frz_min:.1}~{frz_max:.1}, 高さ方向の充填率: 錐台形状に対して山がどこまで埋まっているか。錐台に近い=1.0付近、山が崩れて少ない=0.7~0.8、荷台に少量だけ=0.1~0.3) ",
+            "packingDensity({pd_min:.1}~{pd_max:.1}, ガラの詰まり具合。表面の見た目で判断: ゴツゴツして隙間が目立つ={pd_min:.1}付近、普通の積載=0.7付近、平坦で隙間が少ない={pd_max:.1}付近。山が高いほど自重圧縮で下層の空隙が減るため高い山は値を高めに補正せよ) ",
             "※fillRatioL/W/Zはそれぞれ独立して推定すること"
         ),
-        ua_min = upper_area_range().0,
-        ua_max = upper_area_range().1,
-        h_min = height_range().0,
-        h_max = height_range().1,
-        bp = back_panel_height_m(),
-        hi = hinge_height_m(),
-        s_min = slope_range().0,
-        s_max = slope_range().1,
         frl_min = SPEC.ranges.fill_ratio_l.min,
         frl_max = SPEC.ranges.fill_ratio_l.max,
         frw_min = SPEC.ranges.fill_ratio_w.min,
@@ -161,20 +102,32 @@ fn build_range_guide() -> String {
     )
 }
 
+/// Height calibration description fragment (shared by step1 prompts)
+fn height_guide() -> String {
+    format!(
+        "height({min:.1}~{max:.1}, {step:.2}m刻みで推定せよ。後板(テールゲート上縁)={bp:.2}m, ヒンジ金具={hi:.2}m。荷山の最高点がどちらの目印の何cm上/下かを見て数値化せよ)",
+        min = SPEC.ranges.height.min,
+        max = SPEC.ranges.height.max,
+        step = SPEC.ranges.height.step,
+        bp = SPEC.ranges.height.calibration.back_panel,
+        hi = SPEC.ranges.height.calibration.hinge,
+    )
+}
+
+// ============================================================================
+// Volume estimation prompt (the main prompt)
+// ============================================================================
+
 /// Build the full volume estimation prompt.
 ///
 /// Compact format: JSON template on first line, ranges on second line.
 /// Gemini ignores schemas in long prompts, so keep it minimal.
 fn build_volume_estimation_prompt() -> String {
-    let json_template = build_base_json_template("?", "?");
-    let json_str = serde_json::to_string(&json_template)
+    let json_str = serde_json::to_string(&SPEC.json_template)
         .unwrap_or_else(|_| "{}".to_string());
-    let range_guide = build_range_guide();
-
-    format!(
-        "Output ONLY JSON: {} Adjust each value based on the image: {}",
-        json_str, range_guide
-    )
+    SPEC.prompt_format
+        .replace("{jsonTemplate}", &json_str)
+        .replace("{rangeGuide}", &SPEC.range_guide)
 }
 
 /// Volume estimation prompt - the core prompt used by all analysis paths.
@@ -215,12 +168,9 @@ pub fn build_estimation_prompt(truck_type: &str, material_type: &str) -> String 
     let json_template = build_base_json_template(truck_type, material_type);
     let json_str = serde_json::to_string(&json_template)
         .unwrap_or_else(|_| "{}".to_string());
-    let range_guide = build_range_guide();
-
-    format!(
-        "Output ONLY JSON: {} Adjust each value based on the image: {}",
-        json_str, range_guide
-    )
+    SPEC.prompt_format
+        .replace("{jsonTemplate}", &json_str)
+        .replace("{rangeGuide}", &SPEC.range_guide)
 }
 
 /// Build estimation prompt with Karte JSON (partially pre-filled values).
@@ -237,12 +187,12 @@ pub fn build_karte_prompt(karte_json: &str) -> Result<String, String> {
 
     // Replace null or missing fields with 0 (AI must estimate from image)
     let numeric_fields = [
-        KEY_UPPER_AREA,
-        KEY_HEIGHT,
-        KEY_SLOPE,
-        KEY_FILL_RATIO,
-        KEY_PACKING_DENSITY,
-        KEY_CONFIDENCE_SCORE,
+        "upperArea",
+        "height",
+        "slope",
+        "fillRatio",
+        "packingDensity",
+        "confidenceScore",
     ];
 
     for field in &numeric_fields {
@@ -256,29 +206,29 @@ pub fn build_karte_prompt(karte_json: &str) -> Result<String, String> {
     }
 
     // Ensure reasoning placeholder exists
-    let needs_reasoning = match obj.get(KEY_REASONING) {
+    let needs_reasoning = match obj.get("reasoning") {
         None => true,
         Some(v) => v.is_null(),
     };
     if needs_reasoning {
         obj.insert(
-            KEY_REASONING.to_string(),
+            "reasoning".to_string(),
             serde_json::json!("describe what you observe"),
         );
     }
 
     // Ensure isTargetDetected is a valid boolean
-    let needs_detected = match obj.get(KEY_IS_TARGET_DETECTED) {
+    let needs_detected = match obj.get("isTargetDetected") {
         None => true,
         Some(v) => !v.is_boolean(),
     };
     if needs_detected {
-        obj.insert(KEY_IS_TARGET_DETECTED.to_string(), serde_json::json!(true));
+        obj.insert("isTargetDetected".to_string(), serde_json::json!(true));
     }
 
     // Ensure licensePlate key exists (null is fine)
-    if !obj.contains_key(KEY_LICENSE_PLATE) {
-        obj.insert(KEY_LICENSE_PLATE.to_string(), serde_json::Value::Null);
+    if !obj.contains_key("licensePlate") {
+        obj.insert("licensePlate".to_string(), serde_json::Value::Null);
     }
 
     let guide = build_karte_observation_guide();
@@ -371,122 +321,89 @@ pub fn build_staged_analysis_prompt(
 // Step-specific prompt builders (for multi-step analysis)
 // ============================================================================
 
+/// Build a partial JSON template by extracting only the specified keys
+/// from SPEC.json_template. This avoids hardcoding JSON structures in
+/// each step function and keeps them in sync with prompt-spec.json.
+fn build_partial_json_template(keys: &[&str]) -> String {
+    // Safety: SPEC is parsed from compile-time embedded JSON (include_str!),
+    // so this can only fail if prompt-spec.json is structurally invalid.
+    let full = SPEC.json_template.as_object().expect("json_template must be an object");
+    let mut partial = serde_json::Map::new();
+    for &key in keys {
+        if let Some(val) = full.get(key) {
+            partial.insert(key.to_string(), val.clone());
+        }
+    }
+    serde_json::to_string(&serde_json::Value::Object(partial))
+        .unwrap_or_else(|_| "{}".to_string())
+}
+
 /// Step 1 for 2-step: Estimate height + identify truck/material.
 /// Fewer fields = more AI attention on height accuracy.
 pub fn build_step1_height_prompt() -> String {
+    let json = build_partial_json_template(&["truckType", "materialType", "height", "reasoning"]);
     format!(
-        concat!(
-            "Output ONLY JSON: ",
-            "{{\"truckType\":\"?\",\"materialType\":\"?\",\"height\":0,\"reasoning\":\"describe what you see\"}} ",
-            "Estimate the cargo pile height in 0.05m steps. ",
-            "後板(テールゲート上縁)={bp:.2}m, ヒンジ金具={hi:.2}m。",
-            "荷山の最高点がどちらの目印の何cm上/下かを見て数値化せよ"
-        ),
-        bp = back_panel_height_m(),
-        hi = hinge_height_m(),
+        "Output ONLY JSON: {json} Estimate the cargo pile height. {hg}",
+        json = json,
+        hg = height_guide()
     )
 }
 
 /// Step 2 for 2-step: Estimate remaining parameters with height locked in.
 pub fn build_step2_rest_prompt(height: f64, truck_type: &str, material_type: &str) -> String {
+    let json = build_partial_json_template(&["upperArea", "slope", "fillRatioL", "fillRatioW", "fillRatioZ", "packingDensity", "confidenceScore", "reasoning"]);
+    let (ua_min, ua_max) = upper_area_range();
+    let (s_min, s_max) = slope_range();
     format!(
-        concat!(
-            "Output ONLY JSON: ",
-            "{{\"upperArea\":0,\"slope\":0,",
-            "\"fillRatioL\":0,\"fillRatioW\":0,\"fillRatioZ\":0,",
-            "\"packingDensity\":0,\"confidenceScore\":0,",
-            "\"reasoning\":\"describe what you see\"}} ",
-            "The cargo height is {height:.2}m, truck is \"{truck_type}\", material is \"{material_type}\". ",
-            "Estimate remaining: ",
-            "upperArea({ua_min:.1}~{ua_max:.1}) ",
-            "slope({s_min:.1}~{s_max:.1}, 荷山の前後高低差m) ",
-            "fillRatioL({frl_min:.1}~{frl_max:.1}, 長さ方向) ",
-            "fillRatioW({frw_min:.1}~{frw_max:.1}, 幅方向) ",
-            "fillRatioZ({frz_min:.1}~{frz_max:.1}, 高さ方向) ",
-            "packingDensity({pd_min:.1}~{pd_max:.1}, ガラの詰まり具合) ",
-            "※fillRatioL/W/Zはそれぞれ独立して推定すること"
-        ),
+        "Output ONLY JSON: {json} The cargo height is {height:.2}m, truck is \"{truck_type}\", material is \"{material_type}\". Estimate remaining: upperArea({ua_min:.1}~{ua_max:.1}) slope({s_min:.1}~{s_max:.1}, 荷山の前後高低差m: 手前が低ければ正値) {fp}",
+        json = json,
         height = height,
         truck_type = truck_type,
         material_type = material_type,
-        ua_min = upper_area_range().0,
-        ua_max = upper_area_range().1,
-        s_min = slope_range().0,
-        s_max = slope_range().1,
-        frl_min = SPEC.ranges.fill_ratio_l.min,
-        frl_max = SPEC.ranges.fill_ratio_l.max,
-        frw_min = SPEC.ranges.fill_ratio_w.min,
-        frw_max = SPEC.ranges.fill_ratio_w.max,
-        frz_min = SPEC.ranges.fill_ratio_z.min,
-        frz_max = SPEC.ranges.fill_ratio_z.max,
-        pd_min = SPEC.ranges.packing_density.min,
-        pd_max = SPEC.ranges.packing_density.max,
+        ua_min = ua_min,
+        ua_max = ua_max,
+        s_min = s_min,
+        s_max = s_max,
+        fp = fill_packing_guide(),
     )
 }
 
 /// Step 1 for 3-step: Height ONLY (maximum attention).
 pub fn build_step1_height_only_prompt() -> String {
+    let json = build_partial_json_template(&["height", "reasoning"]);
     format!(
-        concat!(
-            "Output ONLY JSON: ",
-            "{{\"height\":0,\"reasoning\":\"describe what you see\"}} ",
-            "Estimate ONLY the cargo pile height in 0.05m steps. ",
-            "後板(テールゲート上縁)={bp:.2}m, ヒンジ金具={hi:.2}m。",
-            "荷山の最高点がどちらの目印の何cm上/下かを見て数値化せよ。",
-            "Focus exclusively on height measurement."
-        ),
-        bp = back_panel_height_m(),
-        hi = hinge_height_m(),
+        "Output ONLY JSON: {json} Estimate ONLY the cargo pile height. {hg}。Focus exclusively on height measurement.",
+        json = json,
+        hg = height_guide()
     )
 }
 
 /// Step 2 for 3-step: Area + slope (given height).
 pub fn build_step2_area_prompt(height: f64) -> String {
+    let json = build_partial_json_template(&["truckType", "materialType", "upperArea", "slope", "reasoning"]);
+    let (ua_min, ua_max) = upper_area_range();
+    let (s_min, s_max) = slope_range();
     format!(
-        concat!(
-            "Output ONLY JSON: ",
-            "{{\"truckType\":\"?\",\"materialType\":\"?\",",
-            "\"upperArea\":0,\"slope\":0,",
-            "\"reasoning\":\"describe what you see\"}} ",
-            "The cargo height is {height:.2}m. ",
-            "Estimate: upperArea({ua_min:.1}~{ua_max:.1}, fraction of {area:.1}m² bed) ",
-            "slope({s_min:.1}~{s_max:.1}, 荷山の前後高低差m)"
-        ),
+        "Output ONLY JSON: {json} The cargo height is {height:.2}m. Estimate: upperArea({ua_min:.1}~{ua_max:.1}, fraction of {area:.1}m² bed) slope({s_min:.1}~{s_max:.1}, 荷山の前後高低差m: 手前が低ければ正値)",
+        json = json,
         height = height,
-        ua_min = upper_area_range().0,
-        ua_max = upper_area_range().1,
+        ua_min = ua_min,
+        ua_max = ua_max,
         area = bed_area_m2(),
-        s_min = slope_range().0,
-        s_max = slope_range().1,
+        s_min = s_min,
+        s_max = s_max,
     )
 }
 
 /// Step 3 for 3-step: Fill ratios + packing (given height + area).
 pub fn build_step3_fill_prompt(height: f64, upper_area: f64) -> String {
+    let json = build_partial_json_template(&["fillRatioL", "fillRatioW", "fillRatioZ", "packingDensity", "confidenceScore", "reasoning"]);
     format!(
-        concat!(
-            "Output ONLY JSON: ",
-            "{{\"fillRatioL\":0,\"fillRatioW\":0,\"fillRatioZ\":0,",
-            "\"packingDensity\":0,\"confidenceScore\":0,",
-            "\"reasoning\":\"describe what you see\"}} ",
-            "The cargo height is {height:.2}m, upperArea is {ua:.2}. ",
-            "Estimate: ",
-            "fillRatioL({frl_min:.1}~{frl_max:.1}, 長さ方向) ",
-            "fillRatioW({frw_min:.1}~{frw_max:.1}, 幅方向) ",
-            "fillRatioZ({frz_min:.1}~{frz_max:.1}, 高さ方向) ",
-            "packingDensity({pd_min:.1}~{pd_max:.1}, ガラの詰まり具合) ",
-            "※fillRatioL/W/Zはそれぞれ独立して推定すること"
-        ),
+        "Output ONLY JSON: {json} The cargo height is {height:.2}m, upperArea is {ua:.2}. Estimate: {fp}",
+        json = json,
         height = height,
         ua = upper_area,
-        frl_min = SPEC.ranges.fill_ratio_l.min,
-        frl_max = SPEC.ranges.fill_ratio_l.max,
-        frw_min = SPEC.ranges.fill_ratio_w.min,
-        frw_max = SPEC.ranges.fill_ratio_w.max,
-        frz_min = SPEC.ranges.fill_ratio_z.min,
-        frz_max = SPEC.ranges.fill_ratio_z.max,
-        pd_min = SPEC.ranges.packing_density.min,
-        pd_max = SPEC.ranges.packing_density.max,
+        fp = fill_packing_guide(),
     )
 }
 
