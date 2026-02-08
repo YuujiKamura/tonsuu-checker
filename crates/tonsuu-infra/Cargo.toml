@@ -1,0 +1,23 @@
+[package]
+name = "tonsuu-infra"
+description = "Infrastructure layer - persistence implementations, loaders"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+tonsuu-types.workspace = true
+tonsuu-store.workspace = true
+tonsuu-domain.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+csv.workspace = true
+encoding_rs.workspace = true
+kamadak-exif.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

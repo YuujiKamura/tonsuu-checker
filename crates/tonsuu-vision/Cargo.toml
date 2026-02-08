@@ -1,0 +1,16 @@
+[package]
+name = "tonsuu-vision"
+description = "AI-powered image analysis for tonnage estimation"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+tonsuu-types.workspace = true
+tonsuu-store.workspace = true
+tonsuu-core.workspace = true
+cli-ai-analyzer.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+shell-words.workspace = true
