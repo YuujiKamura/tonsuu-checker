@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 //! Ground truth regression test
 //!
 //! tests/fixtures/ground_truth.json の画像を解析し、

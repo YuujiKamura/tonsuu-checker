@@ -65,7 +65,11 @@ impl AnalyzerConfig {
     }
 }
 
-/// Analyze a single image and return estimation result
+/// Analyze a single image and return estimation result.
+///
+/// **Deprecated**: Prefer `analyze_image_box_overlay` for higher accuracy.
+/// This legacy single-prompt path is kept for the GUI and ground-truth tests.
+#[deprecated(note = "Use analyze_image_box_overlay for higher accuracy")]
 pub fn analyze_image(image_path: &Path, config: &AnalyzerConfig) -> Result<EstimationResult> {
     let prompt = build_analysis_prompt();
 
@@ -387,34 +391,6 @@ pub fn extract_json_from_response(response: &str) -> String {
     response.to_string()
 }
 
-/// Analyze multiple images (ensemble)
-#[allow(dead_code)]
-pub fn analyze_image_ensemble(
-    image_path: &Path,
-    config: &AnalyzerConfig,
-    count: u32,
-) -> Result<EstimationResult> {
-    if count <= 1 {
-        return analyze_image(image_path, config);
-    }
-
-    let mut results = Vec::new();
-
-    for _ in 0..count {
-        match analyze_image(image_path, config) {
-            Ok(result) => results.push(result),
-            Err(e) => eprintln!("Ensemble sample failed: {}", e),
-        }
-    }
-
-    if results.is_empty() {
-        return Err(Error::AnalysisFailed(
-            "All ensemble samples failed".to_string(),
-        ));
-    }
-
-    Ok(merge_results(&results))
-}
 
 /// Merge multiple estimation results (ensemble voting)
 fn merge_results(results: &[EstimationResult]) -> EstimationResult {

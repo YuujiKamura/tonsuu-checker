@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::time::Instant;
+#[allow(deprecated)]
 use tonsuu_vision::{analyze_image, AnalyzerConfig};
 use tonsuu_app::config::Config;
 use tonsuu_vision::ai::prompts::{build_staged_analysis_prompt, GradedReferenceItem};
@@ -423,6 +424,7 @@ impl AnalyzePanel {
 }
 
 /// Run simple (non-staged) analysis
+#[allow(deprecated)]
 fn run_simple_analysis(
     sender: Sender<AnalysisStatus>,
     image_path: PathBuf,

@@ -16,7 +16,8 @@ use thiserror::Error;
 use tonsuu_store::{Store, VehicleStore};
 use tonsuu_types::{Error, EstimationResult, LoadGrade, RegisteredVehicle, TruckClass};
 use tonsuu_vision::{
-    analyze_image_staged, AnalyzerConfig, Cache, ProgressCallback, StagedAnalysisOptions,
+    analyze_image_box_overlay, analyze_image_staged, AnalyzerConfig, Cache, ProgressCallback,
+    StagedAnalysisOptions,
 };
 use std::path::Path;
 
@@ -241,27 +242,50 @@ pub fn analyze_truck_image(
         .truck_class_override
         .or_else(|| matched_vehicle.as_ref().map(|v| v.truck_class()));
 
-    // Step 6: Run staged analysis
+    // Step 6: Run analysis
     let analyzer_config = AnalyzerConfig::default()
         .with_backend(&config.backend)
         .with_model(config.model.clone())
         .with_usage_mode(&config.usage_mode);
 
-    let staged_options = StagedAnalysisOptions {
-        truck_class,
-        ensemble_count: options.ensemble_count.max(1),
-        truck_type_hint: options.truck_type_hint.clone(),
-        material_type: options.material_type.clone(),
-        karte_json: options.karte_json.clone(),
-    };
+    let estimation = if options.karte_json.is_some() {
+        // Karte path: use legacy staged analysis (karte is multi-param based)
+        let staged_options = StagedAnalysisOptions {
+            truck_class,
+            ensemble_count: options.ensemble_count.max(1),
+            truck_type_hint: options.truck_type_hint.clone(),
+            material_type: options.material_type.clone(),
+            karte_json: options.karte_json.clone(),
+        };
 
-    let estimation = analyze_image_staged(
-        image_path,
-        &analyzer_config,
-        &staged_options,
-        &store,
-        progress,
-    )?;
+        analyze_image_staged(
+            image_path,
+            &analyzer_config,
+            &staged_options,
+            &store,
+            progress,
+        )?
+    } else {
+        // Box-overlay pipeline (default, higher accuracy)
+        // Priority: Step 5 resolved truck_class > CLI hint > default "4t"
+        // TruckClass::label() returns "2t"/"4t"/"10t" which match prompt-spec.json truckSpecs keys
+        // Caching is handled by Steps 3 (check) and 8 (store) above, applying to both paths
+        let tc_label = truck_class.map(|tc| tc.label().to_string());
+        let truck_class_str = tc_label.as_deref()
+            .or(options.truck_type_hint.as_deref())
+            .unwrap_or("4t");
+        let material_type_str = options.material_type.as_deref().unwrap_or("As殻");
+        let ensemble_count = options.ensemble_count.max(1) as usize;
+
+        analyze_image_box_overlay(
+            image_path,
+            &analyzer_config,
+            truck_class_str,
+            material_type_str,
+            ensemble_count,
+            progress,
+        )?
+    };
 
     // Step 7: Calculate load info
     let (load_grade, load_ratio) = calculate_load_info(&estimation, matched_vehicle.as_ref());

@@ -1,7 +1,7 @@
 //! Command handlers
 
 use tonsuu_vision::cache::Cache;
-use tonsuu_vision::{analyze_image, AnalyzerConfig};
+use tonsuu_vision::AnalyzerConfig;
 use tonsuu_app::app::{self, AnalysisOptions};
 use cli_ai_analyzer::check_gemini_status;
 use crate::cli::{Cli, Commands, OutputFormat};
@@ -303,30 +303,20 @@ fn cmd_analyze(
             None
         };
 
-    // Enforce karte-only input
-    if material_type.is_some() || truck_type_hint.is_some() {
-        return Err(Error::AnalysisFailed(
-            "競合する引数: --material/--truck-class は廃止。--karte を使用してください。"
-                .to_string(),
-        ));
-    }
-
+    // Build analysis options using the app layer
     let karte_json = match karte_arg {
-        Some(arg) => parse_karte_arg(&arg)?,
-        None => {
-            return Err(Error::AnalysisFailed(
-                "--karte が必須です。Karte JSON（文字列またはファイル）を指定してください。"
-                    .to_string(),
-            ))
-        }
+        Some(arg) => Some(parse_karte_arg(&arg)?),
+        None => None,
     };
 
-    // Build analysis options using the app layer
     let mut options = AnalysisOptions::new()
         .with_cache(use_cache)
         .with_ensemble_count(ensemble)
-        .with_verbose(cli.verbose)
-        .with_karte_json(karte_json);
+        .with_verbose(cli.verbose);
+
+    if let Some(karte) = karte_json {
+        options = options.with_karte_json(karte);
+    }
 
     if let Some(plate) = manual_plate {
         options = options.with_manual_plate(plate);
@@ -460,16 +450,6 @@ fn cmd_batch(
         );
     }
 
-    // Setup shared state
-    let cache_dir = if use_cache {
-        Some(config.cache_dir()?)
-    } else {
-        None
-    };
-    let backend = config.backend.clone();
-    let model = config.model.clone();
-    let usage_mode = config.usage_mode.clone();
-
     // Setup progress bar
     let multi_progress = MultiProgress::new();
     let main_pb = multi_progress.add(ProgressBar::new(total_images as u64));
@@ -496,21 +476,13 @@ fn cmd_batch(
         let images = Arc::clone(&images);
         let next_index = Arc::clone(&next_index);
         let results = Arc::clone(&results);
-        let cache_dir = cache_dir.clone();
-        let backend = backend.clone();
-        let model = model.clone();
-        let usage_mode = usage_mode.clone();
+        let config = config.clone();
         let pb = main_pb.clone();
 
         let handle = thread::spawn(move || {
-            // Setup analyzer config for this worker
-            let analyzer_config = AnalyzerConfig::default()
-                .with_backend(&backend)
-                .with_model(model)
-                .with_usage_mode(&usage_mode);
-
-            // Setup cache for this worker (only if caching enabled and dir available)
-            let cache = cache_dir.and_then(|dir| Cache::new(dir).ok());
+            let batch_options = AnalysisOptions::new()
+                .with_cache(use_cache)
+                .with_ensemble_count(config.ensemble_count);
 
             loop {
                 // Get next image to process (lock-free)
@@ -532,23 +504,10 @@ fn cmd_batch(
                     pb.set_message(format!("[W{}] {}", worker_id, filename));
                 }
 
-                // Check cache first (only if caching enabled)
-                let result = if let Some(ref cache) = cache {
-                    if let Ok(Some(cached)) = cache.get(image) {
-                        Ok(cached)
-                    } else {
-                        analyze_image(image, &analyzer_config).map_err(|e| e.to_string())
-                    }
-                } else {
-                    analyze_image(image, &analyzer_config).map_err(|e| e.to_string())
-                };
-
-                // Cache successful result (only if caching enabled)
-                if let Ok(ref res) = result {
-                    if let Some(ref cache) = cache {
-                        let _ = cache.set(image, res);
-                    }
-                }
+                // Use app layer (box-overlay pipeline by default)
+                let result = app::analyze_truck_image(image, &config, &batch_options, None)
+                    .map(|r| r.estimation)
+                    .map_err(|e| e.to_string());
 
                 // Store result
                 {
