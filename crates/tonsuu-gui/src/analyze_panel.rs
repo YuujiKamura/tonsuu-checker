@@ -555,7 +555,9 @@ fn parse_ai_response(response: &str) -> Result<EstimationResult, String> {
     Ok(result)
 }
 
-/// Calculate volume and tonnage from estimated parameters
+/// Calculate volume and tonnage from estimated parameters.
+///
+/// Maps multi-param AI output to box-overlay CoreParams.
 fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
     let height = result.height.unwrap_or(0.0);
     if height <= 0.0 {
@@ -563,9 +565,10 @@ fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
     }
 
     let params = tonsuu_core::CoreParams {
-        fill_ratio_w: result.fill_ratio_w.unwrap_or(0.5),
         height,
-        fill_ratio_z: result.fill_ratio_z.unwrap_or(0.85),
+        fill_ratio_l: result.fill_ratio_l.unwrap_or(0.8),
+        fill_ratio_w: result.fill_ratio_w.unwrap_or(0.5),
+        taper_ratio: 0.85,  // multi-param doesn't estimate taper; use reasonable default
         packing_density: result.packing_density.unwrap_or(0.80),
         material_type: result.material_type.clone(),
     };

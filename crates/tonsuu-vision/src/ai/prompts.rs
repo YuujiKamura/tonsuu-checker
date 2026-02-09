@@ -15,6 +15,32 @@ use std::sync::LazyLock;
 use tonsuu_core::spec::SPEC;
 
 // ============================================================================
+// Multi-param prompt section from prompt-spec.json
+// ============================================================================
+
+/// Parsed multiParamPrompt section from prompt-spec.json
+struct MultiParamPrompt {
+    prompt_format: String,
+    json_template: serde_json::Value,
+    range_guide: String,
+}
+
+/// Parse the multiParamPrompt section from the raw embedded JSON.
+/// This is needed because v2.1.0 moved prompt strings out of the top-level spec.
+static MULTI_PARAM: LazyLock<MultiParamPrompt> = LazyLock::new(|| {
+    let raw: serde_json::Value = serde_json::from_str(
+        include_str!("../../../../../tonsuu-core/prompt-spec.json")
+    ).expect("Failed to parse prompt-spec.json");
+
+    let mp = &raw["multiParamPrompt"];
+    MultiParamPrompt {
+        prompt_format: mp["promptFormat"].as_str().unwrap_or("").to_string(),
+        json_template: mp["jsonTemplate"].clone(),
+        range_guide: mp["rangeGuide"].as_str().unwrap_or("").to_string(),
+    }
+});
+
+// ============================================================================
 // Truck bed dimension constants (meters) - loaded from prompt-spec.json
 // ============================================================================
 
@@ -27,7 +53,7 @@ fn hinge_height_m() -> f64 {
 }
 
 fn bed_area_m2() -> f64 {
-    SPEC.calculation.default_bed_area_m2
+    tonsuu_core::spec::default_bed_area()
 }
 
 // ============================================================================
@@ -43,7 +69,7 @@ fn bed_area_m2() -> f64 {
 /// This shared function creates the core JSON structure that both
 /// build_json_output_instruction and build_estimation_prompt use.
 fn build_base_json_template(truck_type: &str, material_type: &str) -> serde_json::Value {
-    let mut tmpl = SPEC.json_template.clone();
+    let mut tmpl = MULTI_PARAM.json_template.clone();
     if let Some(obj) = tmpl.as_object_mut() {
         obj.insert("truckType".to_string(), serde_json::json!(truck_type));
         obj.insert("materialType".to_string(), serde_json::json!(material_type));
@@ -84,11 +110,11 @@ fn build_karte_observation_guide() -> String {
 /// Compact format: JSON template on first line, ranges on second line.
 /// Gemini ignores schemas in long prompts, so keep it minimal.
 fn build_volume_estimation_prompt() -> String {
-    let json_str = serde_json::to_string(&SPEC.json_template)
+    let json_str = serde_json::to_string(&MULTI_PARAM.json_template)
         .unwrap_or_else(|_| "{}".to_string());
-    SPEC.prompt_format
+    MULTI_PARAM.prompt_format
         .replace("{jsonTemplate}", &json_str)
-        .replace("{rangeGuide}", &SPEC.range_guide)
+        .replace("{rangeGuide}", &MULTI_PARAM.range_guide)
 }
 
 /// Volume estimation prompt - the core prompt used by all analysis paths.
@@ -129,9 +155,9 @@ pub fn build_estimation_prompt(truck_type: &str, material_type: &str) -> String 
     let json_template = build_base_json_template(truck_type, material_type);
     let json_str = serde_json::to_string(&json_template)
         .unwrap_or_else(|_| "{}".to_string());
-    SPEC.prompt_format
+    MULTI_PARAM.prompt_format
         .replace("{jsonTemplate}", &json_str)
-        .replace("{rangeGuide}", &SPEC.range_guide)
+        .replace("{rangeGuide}", &MULTI_PARAM.range_guide)
 }
 
 /// Build estimation prompt with Karte JSON (partially pre-filled values).

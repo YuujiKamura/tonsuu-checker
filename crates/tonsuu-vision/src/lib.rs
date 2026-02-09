@@ -249,20 +249,22 @@ fn parse_response(response: &str) -> Result<EstimationResult> {
     Ok(result)
 }
 
-/// Calculate volume and tonnage from estimated parameters using shared-core
+/// Calculate volume and tonnage from estimated parameters using shared-core.
+///
+/// Maps multi-param AI output (fillRatioL/W/Z) to box-overlay CoreParams.
+/// fillRatioZ from the old multi-param strategy is not used in the new formula;
+/// taper_ratio defaults to 0.85 since the multi-param prompt doesn't ask for it.
 fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
     let height = result.height.unwrap_or(0.0);
     if height <= 0.0 {
         return;
     }
 
-    let fill_ratio_w = result.fill_ratio_w.unwrap_or(0.5);
-    let fill_ratio_z = result.fill_ratio_z.unwrap_or(0.85);
-
     let params = tonsuu_core::CoreParams {
-        fill_ratio_w,
         height,
-        fill_ratio_z,
+        fill_ratio_l: result.fill_ratio_l.unwrap_or(0.8),
+        fill_ratio_w: result.fill_ratio_w.unwrap_or(0.5),
+        taper_ratio: 0.85,  // multi-param doesn't estimate taper; use reasonable default
         packing_density: result.packing_density.unwrap_or(0.80),
         material_type: result.material_type.clone(),
     };
@@ -285,7 +287,6 @@ fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
     let calc = tonsuu_core::calculate_tonnage(&params, truck_class.as_deref());
     result.estimated_volume_m3 = calc.volume;
     result.estimated_tonnage = calc.tonnage;
-
 }
 
 /// Extract JSON from response (handles markdown code blocks)
