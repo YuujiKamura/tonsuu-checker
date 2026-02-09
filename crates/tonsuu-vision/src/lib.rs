@@ -138,7 +138,7 @@ pub fn analyze_image_box_overlay(
     // Convert pipeline result to EstimationResult for backward compatibility
     let mut estimation = EstimationResult::default();
     estimation.truck_type = truck_class.to_string();
-    estimation.material_type = material_type.to_string();
+    estimation.material_type = result.material_type.clone();
     estimation.height = Some(result.height_m);
     estimation.fill_ratio_l = Some(result.fill_ratio_l);
     estimation.fill_ratio_w = Some(result.fill_ratio_w);
