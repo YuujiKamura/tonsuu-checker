@@ -12,6 +12,7 @@ pub use ai::prompts::{
     build_karte_prompt,
     build_staged_analysis_prompt, GradedReferenceItem,
 };
+pub use ai::backend_impl::CliAiBackend;
 pub use cache::Cache;
 #[allow(unused_imports)]
 pub use volume_estimator::analyze_shaken;
@@ -79,6 +80,70 @@ pub fn analyze_image(image_path: &Path, config: &AnalyzerConfig) -> Result<Estim
     let response = analyze(&prompt, &[image_path.to_path_buf()], options)?;
 
     parse_response(&response)
+}
+
+/// Analyze a single image using the box-overlay pipeline (geometry + fill two-stage).
+///
+/// This is the recommended analysis path, producing more accurate results than
+/// the legacy multi-param single-prompt approach.
+pub fn analyze_image_box_overlay(
+    image_path: &Path,
+    config: &AnalyzerConfig,
+    truck_class: &str,
+    material_type: &str,
+    ensemble_count: usize,
+    progress: Option<ProgressCallback>,
+) -> Result<EstimationResult> {
+    let notify = |msg: &str| {
+        if let Some(ref cb) = progress {
+            cb(msg);
+        }
+    };
+
+    notify("Box-overlay解析を準備中...");
+
+    let mut options = if let Some(ref model) = config.model {
+        AnalyzeOptions::with_model(model)
+    } else {
+        AnalyzeOptions::default()
+    };
+    options = options.with_backend(config.backend).json().with_usage_mode(config.usage_mode);
+
+    let backend = CliAiBackend {
+        options,
+        image_paths: vec![image_path.to_path_buf()],
+    };
+
+    let pipeline_config = tonsuu_core::BoxOverlayConfig {
+        truck_class: truck_class.to_string(),
+        material_type: material_type.to_string(),
+        ensemble_count,
+    };
+
+    notify("AI推論実行中...");
+
+    let result = tonsuu_core::analyze_box_overlay(&backend, &[], &pipeline_config)
+        .map_err(|e| Error::AnalysisFailed(e.to_string()))?;
+
+    notify("結果を変換中...");
+
+    // Convert pipeline result to EstimationResult for backward compatibility
+    let mut estimation = EstimationResult::default();
+    estimation.truck_type = truck_class.to_string();
+    estimation.material_type = material_type.to_string();
+    estimation.height = Some(result.height_m);
+    estimation.fill_ratio_l = Some(result.fill_ratio_l);
+    estimation.fill_ratio_w = Some(result.fill_ratio_w);
+    estimation.packing_density = Some(result.packing_density);
+    estimation.estimated_volume_m3 = result.volume;
+    estimation.estimated_tonnage = result.tonnage;
+    let success_rate = result.geometry_runs.iter().filter(|r| r.parsed.is_some()).count() as f64
+        / result.geometry_runs.len().max(1) as f64;
+    estimation.confidence_score = 0.6 + 0.3 * success_rate; // 0.6~0.9 based on ensemble success
+    estimation.reasoning = result.reasoning;
+    estimation.ensemble_count = Some(ensemble_count as u32);
+
+    Ok(estimation)
 }
 
 /// Options for staged analysis
