@@ -23,6 +23,10 @@ use tonsuu_types::{EstimationResult, TruckClass};
 use cli_ai_analyzer::{analyze, AnalyzeOptions, Backend, UsageMode};
 use std::path::Path;
 
+/// Default taper ratio for multi-param path (which doesn't estimate taper).
+/// Conservative value; box-overlay path estimates it from コボレーン visibility.
+pub const DEFAULT_TAPER_RATIO: f64 = 0.75;
+
 /// Analyzer configuration
 #[derive(Debug, Clone)]
 pub struct AnalyzerConfig {
@@ -322,8 +326,8 @@ fn parse_response(response: &str) -> Result<EstimationResult> {
 ///
 /// Maps multi-param AI output (fillRatioL/W/Z) to box-overlay CoreParams.
 /// fillRatioZ from the old multi-param strategy is not used in the new formula;
-/// taper_ratio defaults to 0.85 since the multi-param prompt doesn't ask for it.
-fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
+/// taper_ratio defaults to 0.75 since the multi-param prompt doesn't ask for it.
+pub fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
     let height = result.height.unwrap_or(0.0);
     if height <= 0.0 {
         return;
@@ -333,7 +337,7 @@ fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
         height,
         fill_ratio_l: result.fill_ratio_l.unwrap_or(0.8),
         fill_ratio_w: result.fill_ratio_w.unwrap_or(0.5),
-        taper_ratio: 0.85,  // multi-param doesn't estimate taper; use reasonable default
+        taper_ratio: DEFAULT_TAPER_RATIO,
         packing_density: result.packing_density.unwrap_or(0.80),
         material_type: result.material_type.clone(),
     };

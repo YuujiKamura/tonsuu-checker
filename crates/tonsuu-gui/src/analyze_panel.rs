@@ -8,7 +8,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::time::Instant;
 #[allow(deprecated)]
-use tonsuu_vision::{analyze_image, AnalyzerConfig};
+use tonsuu_vision::{analyze_image, calculate_volume_and_tonnage, AnalyzerConfig};
 use tonsuu_app::config::Config;
 use tonsuu_vision::ai::prompts::{build_staged_analysis_prompt, GradedReferenceItem};
 use tonsuu_app::constants::get_truck_spec;
@@ -555,44 +555,6 @@ fn parse_ai_response(response: &str) -> Result<EstimationResult, String> {
     }
 
     Ok(result)
-}
-
-/// Calculate volume and tonnage from estimated parameters.
-///
-/// Maps multi-param AI output to box-overlay CoreParams.
-fn calculate_volume_and_tonnage(result: &mut EstimationResult) {
-    let height = result.height.unwrap_or(0.0);
-    if height <= 0.0 {
-        return;
-    }
-
-    let params = tonsuu_core::CoreParams {
-        height,
-        fill_ratio_l: result.fill_ratio_l.unwrap_or(0.8),
-        fill_ratio_w: result.fill_ratio_w.unwrap_or(0.5),
-        taper_ratio: 0.85,  // multi-param doesn't estimate taper; use reasonable default
-        packing_density: result.packing_density.unwrap_or(0.80),
-        material_type: result.material_type.clone(),
-    };
-
-    let truck_class = if result.truck_type.is_empty()
-        || result.truck_type == "?"
-        || result.truck_type == "？"
-    {
-        None
-    } else {
-        let cls = result.truck_type
-            .split(|c: char| c == 'ダ' || c == '(' || c == '（')
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        if cls.is_empty() { None } else { Some(cls) }
-    };
-
-    let calc = tonsuu_core::calculate_tonnage(&params, truck_class.as_deref());
-    result.estimated_volume_m3 = (calc.volume * 100.0).round() / 100.0;
-    result.estimated_tonnage = (calc.tonnage * 100.0).round() / 100.0;
 }
 
 /// Extract JSON from response (handles markdown code blocks)
